@@ -1,4 +1,6 @@
+import dpkt
 import pcap
+import os
 
 
 def list_to_num(x):
@@ -14,7 +16,115 @@ def list_to_host(x):
     return '.'.join([str(ord(y)) for y in x])
 
 
-def parse_SSDP(ip, data):
+def parse_bnet(ip, data):
+    fields = data.split(',')
+
+    if len(fields) != 10:
+        raise WritePcap
+
+    # uid = fields[3]
+    account = fields[4] + '#' + fields[5]
+
+    if 'tags' not in hosts[ip].keys():
+        hosts[ip]['tags'] = list()
+
+    if account not in hosts[ip]['tags']:
+        print "Discovered Battle Net Account for %s, %s" % (ip, account)
+        hosts[ip]['tags'].append(account)
+
+    # The following lines are for assisting in reverse engineering the protocol
+
+    if fields[0] != "72057594037927936":
+        print "New value discovered for Battlenet Field #1, %s" % fields[0]
+        raise WritePcap
+
+    # fields[1] is some user/session dependant number between 968472 and 307445411
+
+    if fields[2] != "144115193835963207":
+        print "New value discovered for Battlenet Field #3, %s" % fields[2]
+        raise WritePcap
+
+    # fields[3] is likely the UID
+    # fields[4] is user name
+    # fields[5] is unique username number
+
+    if fields[6] != "721408":
+        print "New value discovered for Battlenet Field #7, %s" % fields[6]
+        raise WritePcap
+
+    if fields[7] != "us.actual.battle.net":
+        print "New value discovered for Battlenet Field #8, %s" % fields[7]
+        raise WritePcap
+
+    if fields[8] not in ['0', '1']:
+        print "New value discovered for Battlenet Field #9, %s" % fields[8]
+        raise WritePcap
+
+    if fields[8] == '0' and fields[9][4:] != "076800":
+        print "New value discovered for Battlenet Field #10, %s" % fields[9]
+        raise WritePcap
+
+    if fields[8] == '1':
+        # Don't have many packets with this value
+        raise WritePcap
+
+
+def parse_mdns_name(data, offset):
+    name = list()
+    length = 1
+    pos = offset
+
+    while length != 0:
+        length = data[pos]
+        name.append(data[pos+1:pos+1+length])
+
+    return '.'.join(name), offset+1
+
+
+def parse_mdns(ip, data):
+    print '.',
+
+    if ord(data[3]) != 0x84:
+        print '!',
+        return  # Not an authortive response packet
+
+    offset = 12
+
+    while True:
+        if ord(data[offset]) < 0xc0:
+            name, offset = parse_mdns_name(data, 12)
+            print name
+        else:
+            offset = offset + 2
+
+        rtype = list_to_num(data[offset:offset+2])
+
+        offset = offset + 2
+
+        if rtype == 12:
+            offset = offset + 6
+        elif rtype == 16:
+            offset = offset + 8
+        elif rtype == 33:
+            offset = offset + 8
+        else:
+            print "New rtype"
+            raise WritePcap
+
+        length = ord(data[offset])
+
+        while length != 0:
+            if length < 0xc0:
+                offset = offset + 1
+                print data[offset:offset+length]
+                offset = offset + length
+            else:
+                offset = offset + 2
+
+            raise WritePcap
+
+
+def parse_ssdp(ip, data):
     url = ''
     proto = "unk"
     port = None
@@ -30,6 +140,7 @@ def parse_SSDP(ip, data):
 
     if method not in ["NOTIFY", "M-SEARCH"]:
         print "SSRP: Unknown method: %s" % method
+        raise WritePcap
 
     for line in ssrp[1:]:
         field = line.split(': ')
@@ -57,6 +168,7 @@ def parse_SSDP(ip, data):
                         port = 80
                 else:
                     print "SSRP Unknown Protocol: %s" % url
+                    raise WritePcap
 
         elif field[0].upper() == "SERVER":
             server = field[1]
@@ -73,6 +185,7 @@ def parse_SSDP(ip, data):
             extras.append(field)
         else:
             print "Unknown SSRP Field: %s:%s" % (field[0], field[1:])
+            raise WritePcap
 
     # parsing done, now time to store the results
 
@@ -125,16 +238,33 @@ def parse_SSDP(ip, data):
         print ''
 
 
+class WritePcap(Exception):
+    pass
+
+
 ip_hdr = 14
 
 hosts = dict()  # stores all the recon data. Currently no way to retrieve data
 
+
+# Setup Artificial Ignorance. Not sure what that is? Google Artificial Ignorance Marcus Ranum
+ignorance_filename = 'ai_log.pcap'
+
+if os.path.isfile(ignorance_filename):
+    os.remove(ignorance_filename)
+
+pcap_log = file(ignorance_filename, 'wb')
+ignorance = dpkt.pcap.Writer(pcap_log)
+
 sniffer = pcap.pcap()
 sniffer.setfilter("udp and ip multicast")
+
+print "ready.."
 
 for ts, pkt in sniffer:
     if [ord(pkt[12]), ord(pkt[13])] != [8, 0]:
         print "Not an IP packet"
+        ignorance.writepkt(pkt, ts)
         continue
 
     ip_sz = (ord(pkt[ip_hdr]) - 0x40) * 4
@@ -142,13 +272,17 @@ for ts, pkt in sniffer:
 
     if len(pkt) != pkt_sz + 14:
         print "Size mismatch (reported %d, actual %d)" % (pkt_sz + 14, len(pkt))
+        ignorance.writepkt(pkt, ts)
         continue
 
     if ord(pkt[ip_hdr + 6]) not in [0, 0x40]:
         print "Fragmented %d" % ord(pkt[ip_hdr + 6])
+        ignorance.writepkt(pkt, ts)
+        continue
 
     if ord(pkt[ip_hdr + 9]) != 17:
         print "Not a UDP packet"
+        ignorance.writepkt(pkt, ts)
         continue
 
     src_host = list_to_host(pkt[ip_hdr + 12:ip_hdr + 16])
@@ -161,10 +295,27 @@ for ts, pkt in sniffer:
 
     svc_port = list_to_num(pkt[udp_hdr + 2: udp_hdr + 4])
 
-    if svc_port == 1900:
-        parse_SSDP(src_host, pkt[udp_hdr + 8:])
-    elif svc_port == 7765:
-        continue
-        # WonderShare MobileGo. Used to manage android phone, not really interesting except to retrieve operating system
-    else:  # Artificial Ignorance Catch
-        print "%s:%d" % (src_host, svc_port)
+    try:
+        if svc_port == 68:
+            raise WritePcap
+            # I'll get around to this soon
+        elif svc_port == 1228:
+            parse_bnet(src_host, pkt[udp_hdr + 8:])
+        elif svc_port == 1900:
+            parse_ssdp(src_host, pkt[udp_hdr + 8:])
+        elif svc_port == 5353:
+            parse_mdns(src_host, pkt[udp_hdr + 8:])
+        elif svc_port == 5355:
+            raise WritePcap
+            # Link Local Name Resolution, but unlike mDNS responses are sent unicast
+        elif svc_port == 7765:
+            raise WritePcap
+            # WonderShare MobileGo.
+            # Used to manage android phone, not really interesting except to retrieve operating system and computer name
+        else:  # Artificial Ignorance Catch
+            print "%s:%d" % (src_host, svc_port)
+            raise WritePcap
+    except WritePcap:
+        print "!",
+        ignorance.writepkt(pkt, ts)
+
