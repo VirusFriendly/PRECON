@@ -129,7 +129,7 @@ def parse_ssdp(ip, data):
     proto = "unk"
     port = None
     server = ''
-    device = ''
+    device = list()
     user_agent = ''
     extras = list()
 
@@ -143,13 +143,19 @@ def parse_ssdp(ip, data):
         raise WritePcap
 
     for line in ssrp[1:]:
-        field = line.split(': ')
+        if ": " in line:
+            field = line.split(': ')
+        else:
+            field = line.split(':')
 
-        if field[0].upper() in ["HOST", "MAN", "CACHE-CONTROL", "NTS", "USN", "MX", "ST", 'OPT', '01-NLS', '']:
+        if field[0].upper() in ["HOST", "MAN", "CACHE-CONTROL", "NTS", "USN", "MX", "ST", 'OPT', '01-NLS', 'DATE', '']:
             continue
 
         if field[0].upper() == "LOCATION":
-            url = field[1]
+            if ": " in line:
+                url = field[1]
+            else:
+                url = ':'.join(field[1:])
 
             if url[:4] == "http":
                 proto = "tcp"
@@ -171,20 +177,42 @@ def parse_ssdp(ip, data):
                     raise WritePcap
 
         elif field[0].upper() == "SERVER":
+            if field[1][:17] == "Microsoft-Windows":
+                win_ver = field[1][18:21]
+
+                if win_ver == "5.0":
+                    device.append("Windows 2000")
+                elif win_ver == "5.1":
+                    device.append("Windows XP")
+                elif win_ver == "5.2":
+                    device.append("Windows XP Professional x64")
+                elif win_ver == "6.0":
+                    device.append("Windows Vista")
+                elif win_ver == "6.1":
+                    device.append("Windows 7")
+                elif win_ver == "6.2":
+                    device.append("Windows 8")
+                elif win_ver == "6.3":
+                    device.append("Windows 8.1")
+                elif field[1][18:22] == "10.0":
+                    device.append("Windows 10")
+                else:
+                    print "Unknown windows version %s" % field[1]
+                    raise WritePcap
             server = field[1]
         elif field[0] == "NT":
             if "device:" in field[1]:
-                device = field[1].split("device:")[1].split(':')[0]
+                device.append(field[1].split("device:")[1].split(':')[0])
         elif field[0].upper() == "USER-AGENT":
             user_agent = field[1]
 
             if user_agent[:13] == "Google Chrome":
-                device = user_agent.split(' ')[2]
+                device.append(user_agent.split(' ')[2])
                 user_agent = ' '.join(user_agent.split(' ')[:2])
         elif field[0].upper()[:2] == "X-":
             extras.append(field)
         elif field[0].upper() == "CONSOLENAME.XBOX.COM":
-            device = field[1]
+            device.append(field[1])
         else:
             print "Unknown SSRP Field: %s:%s" % (field[0], field[1:])
             raise WritePcap
@@ -209,14 +237,15 @@ def parse_ssdp(ip, data):
             newline = True
             hosts[ip]["Ports"][str(port)+'/'+proto] = server
 
-    if device != '':
+    if len(device) > 0:
         if "Device" not in hosts[ip].keys():
             hosts[ip]["Device"] = list()
 
-        if device not in hosts[ip]["Device"]:
-            print "Found new Device Type %s: %s" % (ip, device)
-            newline = True
-            hosts[ip]["Device"].append(device)
+        for devtype in device:
+            if devtype not in hosts[ip]["Device"]:
+                print "Found new Device Type %s: %s" % (ip, devtype)
+                newline = True
+                hosts[ip]["Device"].append(devtype)
 
     if user_agent != '':
         if "UserAgent" not in hosts[ip].keys():
@@ -305,6 +334,9 @@ for ts, pkt in sniffer:
             parse_bnet(src_host, pkt[udp_hdr + 8:])
         elif svc_port == 1900:
             parse_ssdp(src_host, pkt[udp_hdr + 8:])
+        elif svc_port == 3702:
+            # WS-Discovery - Generally looking for WSD enabled (HP) printers
+            raise WritePcap
         elif svc_port == 5353:
             parse_mdns(src_host, pkt[udp_hdr + 8:])
         elif svc_port == 5355:
