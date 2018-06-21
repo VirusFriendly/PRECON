@@ -183,6 +183,8 @@ def parse_ssdp(ip, data):
                 user_agent = ' '.join(user_agent.split(' ')[:2])
         elif field[0].upper()[:2] == "X-":
             extras.append(field)
+        elif field[0].upper() == "CONSOLENAME.XBOX.COM":
+            device = field[1]
         else:
             print "Unknown SSRP Field: %s:%s" % (field[0], field[1:])
             raise WritePcap
@@ -203,7 +205,7 @@ def parse_ssdp(ip, data):
             hosts[ip]["Ports"] = dict()
 
         if str(port)+'/'+proto not in hosts[ip]["Ports"].keys():
-            print "Found new Port %s: %s" % (ip, str(port) + '/' + proto)
+            print "Found new Port %s: %s %s" % (ip, str(port) + '/' + proto, server)
             newline = True
             hosts[ip]["Ports"][str(port)+'/'+proto] = server
 
