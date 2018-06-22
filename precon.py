@@ -57,16 +57,12 @@ def parse_bnet(ip, data):
         raise WritePcap
 
     if fields[8] not in ['0', '1']:
+        # This field is often 0, but sometimes 1
+        # Might be a busy state?
         print "New value discovered for Battlenet Field #9, %s" % fields[8]
         raise WritePcap
 
-    if fields[8] == '0' and fields[9][4:] != "076800":
-        print "New value discovered for Battlenet Field #10, %s" % fields[9]
-        raise WritePcap
-
-    if fields[8] == '1':
-        # Don't have many packets with this value
-        raise WritePcap
+    # fields[9] is a rather peculiar value whose MSB changes more than the LSB
 
 
 def parse_mdns_name(data, offset):
@@ -85,8 +81,8 @@ def parse_mdns(ip, data):
     print '.',
 
     if ord(data[3]) != 0x84:
-        print '!',
-        return  # Not an authortive response packet
+        # Not an authortive response packet
+        raise WritePcap
 
     offset = 12
 
@@ -111,6 +107,8 @@ def parse_mdns(ip, data):
             print "New rtype"
             raise WritePcap
 
+        raise WritePcap  # Still working on this dissector
+
         length = ord(data[offset])
 
         while length != 0:
@@ -120,8 +118,6 @@ def parse_mdns(ip, data):
                 offset = offset + length
             else:
                 offset = offset + 2
-
-            raise WritePcap
 
 
 def parse_ssdp(ip, data):
@@ -327,7 +323,7 @@ for ts, pkt in sniffer:
     svc_port = list_to_num(pkt[udp_hdr + 2: udp_hdr + 4])
 
     try:
-        if svc_port == 68:
+        if svc_port in [67, 68]:
             raise WritePcap
             # I'll get around to this soon
         elif svc_port == 1228:
