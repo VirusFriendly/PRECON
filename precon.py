@@ -16,6 +16,28 @@ def list_to_host(x):
     return '.'.join([str(ord(y)) for y in x])
 
 
+def list_to_host6(x):
+    assert len(x) == 16
+
+    return ':'.join([''.join([hex(ord(x[i])).split('x')[-1], hex(ord(x[i+1])).split('x')[-1]]) for i in xrange(0, 16, 2)])
+
+
+def register_host(ip):
+    if ip not in hosts.keys():
+        print "Found new host %s" % ip
+        hosts[ip] = dict()
+
+
+def register_port(ip, port, proto, server):
+    if "Ports" not in hosts[ip].keys():
+        hosts[ip]["Ports"] = dict()
+
+    if str(port) + '/' + proto not in hosts[ip]["Ports"].keys():
+        print "Found new Port %s: %s %s" % (ip, str(port) + '/' + proto, server)
+        newline = True
+        hosts[ip]["Ports"][str(port) + '/' + proto] = server
+
+
 def parse_bnet(ip, data):
     fields = data.split(',')
 
@@ -82,7 +104,7 @@ def parse_mdns(ip, data):
 
     if ord(data[3]) != 0x84:
         # Not an authortive response packet
-        raise WritePcap
+        return
 
     offset = 12
 
@@ -225,13 +247,7 @@ def parse_ssdp(ip, data):
             hosts[ip]["URLs"].append(url)
 
     if port is not None:
-        if "Ports" not in hosts[ip].keys():
-            hosts[ip]["Ports"] = dict()
-
-        if str(port)+'/'+proto not in hosts[ip]["Ports"].keys():
-            print "Found new Port %s: %s %s" % (ip, str(port) + '/' + proto, server)
-            newline = True
-            hosts[ip]["Ports"][str(port)+'/'+proto] = server
+        register_port(ip, port, proto, server)
 
     if len(device) > 0:
         if "Device" not in hosts[ip].keys():
@@ -263,6 +279,42 @@ def parse_ssdp(ip, data):
 
     if newline:  # Done printing updates
         print ''
+
+
+def parse_teredo(ip, data):
+    if 0x70 < ord(data[0]) or ord(data[0]) < 0x60:
+        print "Teredo is version %d" % ord(data[0])
+        raise WritePcap
+
+    if list_to_num(data[1:5]) != 0:
+        print "Teredo has a flow label"
+        raise WritePcap
+
+    if ord(data[6]) != 59:
+        print "Teredo has a next header"
+        raise WritePcap
+
+    if data[24:40] != '\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01':
+        print "Teredo not a multicast packet: %s" % repr(data[24:40])
+        raise WritePcap
+
+    ipv6 = list_to_host6(data[8:24])  # Todo: support ipv6 in the future
+    tun_server = list_to_host(data[12:16])
+    tun_client_port = list_to_num([chr(0xff - ord(x)) for x in data[18:20]])
+    tun_client = list_to_host([chr(0xff - ord(x)) for x in data[20:24]])
+
+    if tun_client != ip and tun_client not in hosts.keys():
+        print "Discovered external ip: %s" % tun_client
+        register_host(tun_client)
+
+    register_port(tun_client, tun_client_port, 'udp', '')
+
+    if "endpoints" not in hosts[ip].keys():
+        hosts[ip]["endpoints"] = list()
+
+    if tun_server not in hosts[ip]["endpoints"]:
+        print "Discovered new Teredo Server: %s" % tun_server
+        hosts[ip]["endpoints"].append(tun_server)
 
 
 class WritePcap(Exception):
@@ -314,9 +366,7 @@ for ts, pkt in sniffer:
 
     src_host = list_to_host(pkt[ip_hdr + 12:ip_hdr + 16])
 
-    if src_host not in hosts.keys():
-        print "Found new host %s" % src_host
-        hosts[src_host] = dict()
+    register_host(src_host)
 
     udp_hdr = ip_hdr + ip_sz
 
@@ -330,6 +380,9 @@ for ts, pkt in sniffer:
             parse_bnet(src_host, pkt[udp_hdr + 8:])
         elif svc_port == 1900:
             parse_ssdp(src_host, pkt[udp_hdr + 8:])
+        elif svc_port == 3544:
+            # Teredo IPv6 over UDP tunneling
+            parse_teredo(src_host, pkt[udp_hdr + 8:])
         elif svc_port == 3702:
             # WS-Discovery - Generally looking for WSD enabled (HP) printers
             raise WritePcap
