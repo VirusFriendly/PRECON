@@ -100,7 +100,9 @@ def parse_mdns_name(data, offset):
 
 
 def parse_mdns(ip, data):
-    print '.',
+    print 'M',
+
+    raise WritePcap  # Still working on this dissector
 
     if ord(data[3]) != 0x84:
         # Not an authortive response packet
@@ -128,8 +130,6 @@ def parse_mdns(ip, data):
         else:
             print "New rtype"
             raise WritePcap
-
-        raise WritePcap  # Still working on this dissector
 
         length = ord(data[offset])
 
@@ -340,65 +340,78 @@ sniffer.setfilter("udp and ip multicast")
 
 print "ready.."
 
-for ts, pkt in sniffer:
-    if [ord(pkt[12]), ord(pkt[13])] != [8, 0]:
-        print "Not an IP packet"
-        ignorance.writepkt(pkt, ts)
-        continue
+try:
+    for ts, pkt in sniffer:
+        if [ord(pkt[12]), ord(pkt[13])] != [8, 0]:
+            print "Not an IP packet"
+            ignorance.writepkt(pkt, ts)
+            continue
 
-    ip_sz = (ord(pkt[ip_hdr]) - 0x40) * 4
-    pkt_sz = list_to_num(pkt[ip_hdr + 2: ip_hdr + 4])
+        ip_sz = (ord(pkt[ip_hdr]) - 0x40) * 4
+        pkt_sz = list_to_num(pkt[ip_hdr + 2: ip_hdr + 4])
 
-    if len(pkt) != pkt_sz + 14:
-        print "Size mismatch (reported %d, actual %d)" % (pkt_sz + 14, len(pkt))
-        ignorance.writepkt(pkt, ts)
-        continue
+        if len(pkt) != pkt_sz + 14:
+            print "Size mismatch (reported %d, actual %d)" % (pkt_sz + 14, len(pkt))
+            ignorance.writepkt(pkt, ts)
+            continue
 
-    if ord(pkt[ip_hdr + 6]) not in [0, 0x40]:
-        print "Fragmented %d" % ord(pkt[ip_hdr + 6])
-        ignorance.writepkt(pkt, ts)
-        continue
+        if ord(pkt[ip_hdr + 6]) not in [0, 0x40]:
+            print "Fragmented %d" % ord(pkt[ip_hdr + 6])
+            ignorance.writepkt(pkt, ts)
+            continue
 
-    if ord(pkt[ip_hdr + 9]) != 17:
-        print "Not a UDP packet"
-        ignorance.writepkt(pkt, ts)
-        continue
+        if ord(pkt[ip_hdr + 9]) != 17:
+            print "Not a UDP packet"
+            ignorance.writepkt(pkt, ts)
+            continue
 
-    src_host = list_to_host(pkt[ip_hdr + 12:ip_hdr + 16])
+        src_host = list_to_host(pkt[ip_hdr + 12:ip_hdr + 16])
 
-    register_host(src_host)
+        register_host(src_host)
 
-    udp_hdr = ip_hdr + ip_sz
+        udp_hdr = ip_hdr + ip_sz
 
-    svc_port = list_to_num(pkt[udp_hdr + 2: udp_hdr + 4])
+        svc_port = list_to_num(pkt[udp_hdr + 2: udp_hdr + 4])
 
-    try:
-        if svc_port in [67, 68]:
-            raise WritePcap
-            # I'll get around to this soon
-        elif svc_port == 1228:
-            parse_bnet(src_host, pkt[udp_hdr + 8:])
-        elif svc_port == 1900:
-            parse_ssdp(src_host, pkt[udp_hdr + 8:])
-        elif svc_port == 3544:
-            # Teredo IPv6 over UDP tunneling
-            parse_teredo(src_host, pkt[udp_hdr + 8:])
-        elif svc_port == 3702:
-            # WS-Discovery - Generally looking for WSD enabled (HP) printers
-            raise WritePcap
-        elif svc_port == 5353:
-            parse_mdns(src_host, pkt[udp_hdr + 8:])
-        elif svc_port == 5355:
-            raise WritePcap
-            # Link Local Name Resolution, but unlike mDNS responses are sent unicast
-        elif svc_port == 7765:
-            raise WritePcap
-            # WonderShare MobileGo.
-            # Used to manage android phone, not really interesting except to retrieve operating system and computer name
-        else:  # Artificial Ignorance Catch
-            print "%s:%d" % (src_host, svc_port)
-            raise WritePcap
-    except WritePcap:
-        print "!",
-        ignorance.writepkt(pkt, ts)
+        try:
+            if svc_port in [67, 68]:
+                raise WritePcap
+                # I'll get around to this soon
+            elif svc_port == 1228:
+                parse_bnet(src_host, pkt[udp_hdr + 8:])
+            elif svc_port == 1900:
+                parse_ssdp(src_host, pkt[udp_hdr + 8:])
+            elif svc_port == 3544:
+                # Teredo IPv6 over UDP tunneling
+                parse_teredo(src_host, pkt[udp_hdr + 8:])
+            elif svc_port == 3702:
+                # WS-Discovery - Generally looking for WSD enabled (HP) printers
+                raise WritePcap
+            elif svc_port == 5353:
+                parse_mdns(src_host, pkt[udp_hdr + 8:])
+            elif svc_port == 5355:
+                raise WritePcap
+                # Link Local Name Resolution, but unlike mDNS responses are sent unicast
+            elif svc_port == 7765:
+                raise WritePcap
+                # WonderShare MobileGo.
+                # Used to manage android phone, not really interesting except to retrieve operating system and computer name
+            else:  # Artificial Ignorance Catch
+                print "%s:%d" % (src_host, svc_port)
+                raise WritePcap
+        except WritePcap:
+            print "!",
+            ignorance.writepkt(pkt, ts)
+except KeyboardInterrupt:
+    print ''
 
+    for host in hosts.keys():
+        print host
+
+        for data in hosts[host].keys():
+            print data
+
+            for record in hosts[host][data]:
+                print record
+
+        print ''
