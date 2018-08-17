@@ -1,7 +1,10 @@
 import dpkt
 from datetime import datetime
+
 import pcap
 import os
+import select
+import sys
 
 
 def list_to_num(x):
@@ -331,6 +334,50 @@ def parse_teredo(ip, data):
         print "Discovered new Teredo Server: %s" % tun_server
         hosts[ip]["endpoints"].append(tun_server)
 
+def report():
+    timeline = ''
+
+    for hour in xrange(0, 24):
+        if len(str(hour)) > 1:
+            timeline = timeline + " " + str(hour)
+        else:
+            timeline = timeline + "  " + str(hour)
+
+    print ''
+
+    for host in hosts.keys():
+        print host
+
+        if "Time" in hosts[host].keys():
+            timeline_padding = 0
+
+            for day in hosts[host]["Time"]:
+                if len(str(day)) > timeline_padding:
+                    timeline_padding = len(str(day))
+
+            print ' ' * timeline_padding + timeline
+
+            for day in hosts[host]["Time"]:
+                usage = ""
+                print day,
+                print " " * (timeline_padding - len(str(day))),
+
+                for hour in xrange(0, 24):
+                    if str(hour) in hosts[host]["Time"][day]:
+                        usage = usage + "  X"
+                    else:
+                        usage = usage + "   "
+
+                print usage
+
+        for data in hosts[host].keys():
+            if data is not "Time":
+                print data
+
+                for record in hosts[host][data]:
+                    print record
+
+        print ''
 
 class WritePcap(Exception):
     pass
@@ -357,6 +404,11 @@ print "ready.."
 
 try:
     for ts, pkt in sniffer:
+        r, w, e = select.select([sys.stdin], [], [], 0)  # detect if enter was pressed
+        if len(r) > 0:
+            sys.stdin.readline()  # clear the return
+            report()
+
         if [ord(pkt[12]), ord(pkt[13])] != [8, 0]:
             print "Not an IP packet"
             ignorance.writepkt(pkt, ts)
@@ -418,37 +470,4 @@ try:
             print "!",
             ignorance.writepkt(pkt, ts)
 except KeyboardInterrupt:
-    print ''
-    timeline = ""
-
-    for hour in xrange(0, 24):
-        if len(str(hour)) > 1:
-            timeline = timeline + " " + str(hour)
-        else:
-            timeline = timeline + "  " + str(hour)
-
-    for host in hosts.keys():
-        print host
-
-        if "Time" in hosts[host].keys():
-            for day in hosts[host]["Time"]:
-                usage = ""
-                print day
-                print timeline
-
-                for hour in xrange(0, 24):
-                    if str(hour) in hosts[host]["Time"][day]:
-                        usage = usage + "  X"
-                    else:
-                        usage = usage + "   "
-
-                print usage
-
-        for data in hosts[host].keys():
-            if data is not "Time":
-                print data
-
-                for record in hosts[host][data]:
-                    print record
-
-        print ''
+    report()
