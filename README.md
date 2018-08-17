@@ -15,7 +15,7 @@ dashboard for red team engagements
 
 Currently depends on
 
-* Pypcap - https://github.com/pynetwork/pypcap
+* pypcap
 * dpkt
 
 ## Usage
@@ -25,3 +25,5 @@ With promisc privledges, run python precon.py
 In the current state it'll print new information it's discovered.
 
 Additionally it'll save an unparsed packets as ai_log.pcap
+
+Outputs a summary report on exit, or hit return if you want a report without quiting

@@ -118,7 +118,7 @@ def parse_mdns_name(data, offset):
 
 
 def parse_mdns(ip, data):
-    print 'M',
+    # print 'M',
 
     raise WritePcap  # Still working on this dissector
 
@@ -334,6 +334,7 @@ def parse_teredo(ip, data):
         print "Discovered new Teredo Server: %s" % tun_server
         hosts[ip]["endpoints"].append(tun_server)
 
+
 def report():
     timeline = ''
 
@@ -410,7 +411,7 @@ try:
             report()
 
         if [ord(pkt[12]), ord(pkt[13])] != [8, 0]:
-            print "Not an IP packet"
+            # print "Not an IP packet"
             ignorance.writepkt(pkt, ts)
             continue
 
@@ -418,17 +419,17 @@ try:
         pkt_sz = list_to_num(pkt[ip_hdr + 2: ip_hdr + 4])
 
         if len(pkt) != pkt_sz + 14:
-            print "Size mismatch (reported %d, actual %d)" % (pkt_sz + 14, len(pkt))
+            # print "Size mismatch (reported %d, actual %d)" % (pkt_sz + 14, len(pkt))
             ignorance.writepkt(pkt, ts)
             continue
 
         if ord(pkt[ip_hdr + 6]) not in [0, 0x40]:
-            print "Fragmented %d" % ord(pkt[ip_hdr + 6])
+            # print "Fragmented %d" % ord(pkt[ip_hdr + 6])
             ignorance.writepkt(pkt, ts)
             continue
 
         if ord(pkt[ip_hdr + 9]) != 17:
-            print "Not a UDP packet"
+            # print "Not a UDP packet"
             ignorance.writepkt(pkt, ts)
             continue
 
@@ -464,10 +465,10 @@ try:
                 # WonderShare MobileGo.
                 # Used to manage android phone, not really interesting except to retrieve operating system and computer name
             else:  # Artificial Ignorance Catch
-                print "%s:%d" % (src_host, svc_port)
+                # print "%s:%d" % (src_host, svc_port)
                 raise WritePcap
         except WritePcap:
-            print "!",
+            # print "!",
             ignorance.writepkt(pkt, ts)
 except KeyboardInterrupt:
     report()
