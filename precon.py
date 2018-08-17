@@ -1,4 +1,5 @@
 import dpkt
+from datetime import datetime
 import pcap
 import os
 
@@ -26,6 +27,20 @@ def register_host(ip):
     if ip not in hosts.keys():
         print "Found new host %s" % ip
         hosts[ip] = dict()
+
+    # insert time here
+    now = datetime.now()
+    day = now.strftime("%d")
+    hour = now.strftime("%H")
+
+    if "Time" not in hosts[ip].keys():
+        hosts[ip]["Time"] = dict()
+
+    if day not in hosts[ip]["Time"]:
+        hosts[ip]["Time"][day] = list()
+
+    if hour not in hosts[ip]["Time"][day]:
+        hosts[ip]["Time"][day].append(hour)
 
 
 def register_port(ip, port, proto, server):
@@ -404,14 +419,36 @@ try:
             ignorance.writepkt(pkt, ts)
 except KeyboardInterrupt:
     print ''
+    timeline = ""
+
+    for hour in xrange(0, 24):
+        if len(str(hour)) > 1:
+            timeline = timeline + " " + str(hour)
+        else:
+            timeline = timeline + "  " + str(hour)
 
     for host in hosts.keys():
         print host
 
-        for data in hosts[host].keys():
-            print data
+        if "Time" in hosts[host].keys():
+            for day in hosts[host]["Time"]:
+                usage = ""
+                print day
+                print timeline
 
-            for record in hosts[host][data]:
-                print record
+                for hour in xrange(0, 24):
+                    if str(hour) in hosts[host]["Time"][day]:
+                        usage = usage + "  X"
+                    else:
+                        usage = usage + "   "
+
+                print usage
+
+        for data in hosts[host].keys():
+            if data is not "Time":
+                print data
+
+                for record in hosts[host][data]:
+                    print record
 
         print ''
