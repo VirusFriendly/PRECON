@@ -33,8 +33,11 @@ def register_host(ip):
 
     # insert time here
     now = datetime.now()
-    day = now.strftime("%d")
+    day = now.strftime("%B%d")
     hour = now.strftime("%H")
+
+    if day not in date_range:
+        date_range.append(day)
 
     if "Time" not in hosts[ip].keys():
         hosts[ip]["Time"] = dict()
@@ -74,34 +77,15 @@ def parse_bnet(ip, data):
 
     # The following lines are for assisting in reverse engineering the protocol
 
-    if fields[0] != "72057594037927936":
-        print "New value discovered for Battlenet Field #1, %s" % fields[0]
-        raise WritePcap
-
+    # fields[0] is unknown
     # fields[1] is some user/session dependant number between 968472 and 307445411
-
-    if fields[2] != "144115193835963207":
-        print "New value discovered for Battlenet Field #3, %s" % fields[2]
-        raise WritePcap
-
+    # fields[2] is unknown
     # fields[3] is likely the UID
     # fields[4] is user name
     # fields[5] is unique username number
-
-    if fields[6] != "721408":
-        print "New value discovered for Battlenet Field #7, %s" % fields[6]
-        raise WritePcap
-
-    if fields[7] != "us.actual.battle.net":
-        print "New value discovered for Battlenet Field #8, %s" % fields[7]
-        raise WritePcap
-
-    if fields[8] not in ['0', '1']:
-        # This field is often 0, but sometimes 1
-        # Might be a busy state?
-        print "New value discovered for Battlenet Field #9, %s" % fields[8]
-        raise WritePcap
-
+    # fields[6] is unknown
+    # fields[7] is Region
+    # fields[8] is unknown
     # fields[9] is a rather peculiar value whose MSB changes more than the LSB
 
 
@@ -352,24 +336,32 @@ def report():
         if "Time" in hosts[host].keys():
             timeline_padding = 0
 
-            for day in hosts[host]["Time"]:
+            for day in date_range:
                 if len(str(day)) > timeline_padding:
                     timeline_padding = len(str(day))
 
             print ' ' * timeline_padding + timeline
 
-            for day in hosts[host]["Time"]:
-                usage = ""
-                print day,
-                print " " * (timeline_padding - len(str(day))),
+            for day in date_range:
+                if day in hosts[host]["Time"].keys():
+                    usage = ""
+                    print day,
+                    print "-" * (timeline_padding - len(str(day))),
 
-                for hour in xrange(0, 24):
-                    if str(hour) in hosts[host]["Time"][day]:
-                        usage = usage + "  X"
-                    else:
-                        usage = usage + "   "
+                    for hour in xrange(0, 24):
+                        time = str(hour)
 
-                print usage
+                        if len(time) == 1:
+                            time = '0' + time
+
+                        if time in hosts[host]["Time"][day]:
+                            mark = 'X'
+                        else:
+                            mark = ' '
+
+                        usage = usage + mark + '  '
+
+                    print usage
 
         for data in hosts[host].keys():
             if data is not "Time":
@@ -387,6 +379,7 @@ class WritePcap(Exception):
 ip_hdr = 14
 
 hosts = dict()  # stores all the recon data. Currently no way to retrieve data
+date_range = list()
 
 
 # Setup Artificial Ignorance. Not sure what that is? Google Artificial Ignorance Marcus Ranum
