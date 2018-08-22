@@ -59,6 +59,18 @@ def register_port(ip, port, proto, server):
         hosts[ip]["Ports"][str(port) + '/' + proto] = server
 
 
+def register_svc(ip, svc, details):
+    if "Services" not in hosts[ip].keys():
+        hosts[ip]["Services"] = dict()
+
+    if svc not in hosts[ip]["Services"].keys():
+        hosts[ip]["Services"][svc] = list()
+
+    if details not in hosts[ip]["Services"][svc]:
+        hosts[ip]["Services"][svc].append(details)
+        print "Found new service for %s: %s" % (ip, svc)
+
+
 def parse_bnet(ip, data):
     fields = data.split(',')
 
@@ -91,33 +103,46 @@ def parse_bnet(ip, data):
 
 def parse_mdns_name(data, offset):
     name = list()
-    length = 1
     pos = offset
+    length = ord(data[pos])
 
     while length != 0:
-        length = data[pos]
-        name.append(data[pos+1:pos+1+length])
+        if length < 0xc0:
+            name.append(data[pos+1:pos+1+length])
+            pos = pos+1+length
+            length = ord(data[pos])
+        else:
+            x, _ = parse_mdns_name(data, ord(data[pos+1]))
+            name.append(x)
+            pos = pos+2
+            length = 0
 
-    return '.'.join(name), offset+1
+    return '.'.join(name), pos+1
 
 
 def parse_mdns(ip, data):
-    # print 'M',
-
-    raise WritePcap  # Still working on this dissector
-
-    if ord(data[3]) != 0x84:
+    if ord(data[2]) != 0x84:
         # Not an authortive response packet
+        # print repr(data[0:5]),
         return
+
+    questions = list_to_num(data[4:6])
+    answer_rr = list_to_num(data[6:8])
+    authority_rr = list_to_num(data[8:10])
+    additional_rr = list_to_num(data[10:12])
+
+    if questions > 0:
+        print "Has %d questions" % questions
+        raise WritePcap
+
+    if authority_rr > 0:
+        print "Has %d authorities" % authority_rr
+        raise WritePcap
 
     offset = 12
 
-    while True:
-        if ord(data[offset]) < 0xc0:
-            name, offset = parse_mdns_name(data, 12)
-            print name
-        else:
-            offset = offset + 2
+    for _ in xrange(answer_rr):
+        svc_type, offset = parse_mdns_name(data, offset)
 
         rtype = list_to_num(data[offset:offset+2])
 
@@ -125,23 +150,28 @@ def parse_mdns(ip, data):
 
         if rtype == 12:
             offset = offset + 6
-        elif rtype == 16:
-            offset = offset + 8
-        elif rtype == 33:
-            offset = offset + 8
+
+            length = list_to_num(data[offset:offset + 2])
+            offset = offset + 2
+
+            domain_name, _ = parse_mdns_name(data, offset)
+            register_svc(ip, svc_type, domain_name)
+            offset = offset + length
+        # elif rtype == 16:
+        #    offset = offset + 8
+        # elif rtype == 33:
+        #    offset = offset + 8
         else:
-            print "New rtype"
+            print "New rtype %d" % rtype
             raise WritePcap
 
-        length = ord(data[offset])
-
-        while length != 0:
-            if length < 0xc0:
-                offset = offset + 1
-                print data[offset:offset+length]
-                offset = offset + length
-            else:
-                offset = offset + 2
+    #while length != 0:
+    #    if length < 0xc0:
+    #        offset = offset + 1
+    #        print data[offset:offset+length]
+    #        offset = offset + length
+    #    else:
+    #        offset = offset + 2
 
 
 def parse_ssdp(ip, data):
@@ -229,6 +259,8 @@ def parse_ssdp(ip, data):
             if user_agent[:13] == "Google Chrome":
                 device.append(user_agent.split(' ')[2])
                 user_agent = ' '.join(user_agent.split(' ')[:2])
+        elif field[0].upper() == "X-SONOS-SESSIONSECONDS":
+            pass
         elif field[0].upper()[:2] == "X-":
             extras.append(field)
         elif field[0].upper() == "CONSOLENAME.XBOX.COM":
@@ -363,8 +395,12 @@ def report():
 
                     print usage
 
+        if "Services" in hosts[host].keys():
+            for svc in hosts[host]["Services"]:
+                print svc
+
         for data in hosts[host].keys():
-            if data is not "Time":
+            if data is not "Time" and data is not "Services":
                 print data
 
                 for record in hosts[host][data]:
