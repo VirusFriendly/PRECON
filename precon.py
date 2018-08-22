@@ -49,6 +49,24 @@ def register_host(ip):
         hosts[ip]["Time"][day].append(hour)
 
 
+def register_hostname(ip, hostname):
+    if "Hostname" not in hosts[ip].keys():
+        hosts[ip]["Hostname"] = list()
+
+    if hostname not in hosts[ip]["Hostname"]:
+        hosts[ip]["Hostname"].append(hostname)
+        print "Found %s has hostname %s" % (ip, hostname)
+
+
+def register_interface(ip, interface):
+    if "Interfaces" not in hosts[ip].keys():
+        hosts[ip]["Interfaces"] = list()
+
+    if hostname not in hosts[ip]["Interfaces"]:
+        hosts[ip]["Interfaces"].append(interface)
+        print "Found %s has hostname %s" % (ip, interface)
+
+
 def register_port(ip, port, proto, server):
     if "Ports" not in hosts[ip].keys():
         hosts[ip]["Ports"] = dict()
@@ -110,7 +128,11 @@ def parse_mdns_name(data, offset):
         if length < 0xc0:
             name.append(data[pos+1:pos+1+length])
             pos = pos+1+length
-            length = ord(data[pos])
+
+            if pos < len(data):
+                length = ord(data[pos])
+            else:
+                length = 0
         else:
             x, _ = parse_mdns_name(data, ord(data[pos+1]))
             name.append(x)
@@ -118,6 +140,22 @@ def parse_mdns_name(data, offset):
             length = 0
 
     return '.'.join(name), pos+1
+
+
+def parse_mdns_text(data):
+    texts = list()
+    length = ord(data[0])
+    pos = 0
+
+    while pos < len(data):
+        if length < 0xc0:
+            texts.append(data[pos+1:pos+1+length])
+            pos = pos+1+length
+        else:
+            print "Text field contains dns compression"
+            raise WritePcap
+
+    return texts
 
 
 def parse_mdns(ip, data):
@@ -148,7 +186,13 @@ def parse_mdns(ip, data):
 
         offset = offset + 2
 
-        if rtype == 12:
+        if rtype == 1: # Host Address RR
+            offset = offset + 8
+            register_hostname(ip, svc_type)
+
+            if list_to_host(data[offset:offset+4]) != ip:
+                register_interface(ip, list_to_host(data[offset:offset+4]))
+        elif rtype == 12:  # PTR RR
             offset = offset + 6
 
             length = list_to_num(data[offset:offset + 2])
@@ -157,21 +201,21 @@ def parse_mdns(ip, data):
             domain_name, _ = parse_mdns_name(data, offset)
             register_svc(ip, svc_type, domain_name)
             offset = offset + length
-        # elif rtype == 16:
-        #    offset = offset + 8
+        elif rtype == 16:  # TXT RR
+            offset = offset + 6
+
+            length = list_to_num(data[offset:offset + 2])
+            offset = offset + 2
+
+            txts = parse_mdns_text(data[offset:offset+length+1])
+            register_svc(ip, svc_type, txts)
+            offset = offset + length
+
         # elif rtype == 33:
         #    offset = offset + 8
         else:
             print "New rtype %d" % rtype
             raise WritePcap
-
-    #while length != 0:
-    #    if length < 0xc0:
-    #        offset = offset + 1
-    #        print data[offset:offset+length]
-    #        offset = offset + length
-    #    else:
-    #        offset = offset + 2
 
 
 def parse_ssdp(ip, data):
