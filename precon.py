@@ -365,7 +365,7 @@ def report():
     for host in hosts.keys():
         print host
 
-        if "Time" in hosts[host].keys():
+        if "Time" in hosts[host].keys() and len(date_range) > 1:
             timeline_padding = 0
 
             for day in date_range:
@@ -396,15 +396,17 @@ def report():
                     print usage
 
         if "Services" in hosts[host].keys():
+            print "Services"
+
             for svc in hosts[host]["Services"]:
-                print svc
+                print "- %s" % svc
 
         for data in hosts[host].keys():
             if data is not "Time" and data is not "Services":
                 print data
 
                 for record in hosts[host][data]:
-                    print record
+                    print "- %s" % repr(record)
 
         print ''
 
