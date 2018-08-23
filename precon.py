@@ -58,13 +58,32 @@ def register_hostname(ip, hostname):
         print "Found %s has hostname %s" % (ip, hostname)
 
 
+def report_hostname(ip):
+    if "Hostname" in hosts[ip].keys():
+        if len(hosts[ip]["Hostname"]) == 1:
+            print "Hostname: %s" % hosts[ip]["Hostname"][0]
+        else:
+            print "Hostnames:"
+
+            for hostname in hosts[ip]["Hostname"]:
+                print "- %s" % hostname
+
+
 def register_interface(ip, interface):
     if "Interfaces" not in hosts[ip].keys():
         hosts[ip]["Interfaces"] = list()
 
-    if hostname not in hosts[ip]["Interfaces"]:
+    if interface not in hosts[ip]["Interfaces"]:
         hosts[ip]["Interfaces"].append(interface)
         print "Found %s has hostname %s" % (ip, interface)
+
+def report_interface(ip):
+    if "Interfaces" in hosts[ip].keys():
+        print "Interfaces:"
+        print "- %s" % ip
+
+        for interface in hosts[ip]["Interfaces"]:
+            print "- %s" % interface
 
 
 def register_port(ip, port, proto, server):
@@ -75,6 +94,14 @@ def register_port(ip, port, proto, server):
         print "Found new Port %s: %s %s" % (ip, str(port) + '/' + proto, server)
         newline = True
         hosts[ip]["Ports"][str(port) + '/' + proto] = server
+
+
+def report_port(ip):
+    if "Ports" in hosts[ip].keys():
+        print "Ports:"
+
+        for port in hosts[ip]["Ports"].keys():
+            print "- %s:%s" % (port, hosts[ip]["Ports"][port])
 
 
 def register_svc(ip, svc, details):
@@ -89,6 +116,87 @@ def register_svc(ip, svc, details):
         print "Found new service for %s: %s" % (ip, svc)
 
 
+def report_svc(ip):
+    if "Services" in hosts[ip].keys():
+        print "Services"
+
+        for value in hosts[ip]["Services"]:
+            print "- %s" % value
+
+
+def register_tag(ip, system, account):
+    if 'Tags' not in hosts[ip].keys():
+        hosts[ip]['Tags'] = dict()
+
+    if account not in hosts[ip]['Tags']:
+        print "Discovered %s Account for %s, %s" % (system, ip, account)
+        hosts[ip]['Tags'].append(account)
+
+
+def report_tag(ip):
+    if 'Tags' in hosts[ip].keys():
+        print "Tags"
+
+        for system in hosts[ip]['Tags'].keys():
+            for account in hosts[ip]['Tags'][system]:
+                print "- %s" % ' '.join([system, account])
+
+
+def report_timeline(ip):
+    if "Time" in hosts[ip].keys() and len(date_range) > 1:
+        timeline = ' '
+
+        for hour in xrange(0, 24):
+            if len(str(hour)) > 1:
+                timeline = timeline + " " + str(hour)
+            else:
+                timeline = timeline + "  " + str(hour)
+
+        timeline_padding = 0
+
+        for day in date_range:
+            if len(str(day)) > timeline_padding:
+                timeline_padding = len(str(day))
+
+        print ' ' + ' ' * timeline_padding + timeline
+
+        for day in date_range:
+            if day in hosts[ip]["Time"].keys():
+                usage = ""
+                print day,
+                print "-" * (timeline_padding - len(str(day))),
+
+                for hour in xrange(0, 24):
+                    time = str(hour)
+
+                    if len(time) == 1:
+                        time = '0' + time
+
+                    if time in hosts[ip]["Time"][day]:
+                        mark = 'X'
+                    else:
+                        mark = ' '
+
+                    usage = usage + mark + '  '
+
+                print usage
+
+
+def report():
+    print ''
+
+    for host in hosts.keys():
+        print host
+
+        report_timeline(host)
+        report_hostname(host)
+        report_interface(host)
+        report_svc(host)
+        report_tag(host)
+
+        print ''
+
+
 def parse_bnet(ip, data):
     fields = data.split(',')
 
@@ -97,13 +205,7 @@ def parse_bnet(ip, data):
 
     # uid = fields[3]
     account = fields[4] + '#' + fields[5]
-
-    if 'tags' not in hosts[ip].keys():
-        hosts[ip]['tags'] = list()
-
-    if account not in hosts[ip]['tags']:
-        print "Discovered Battle Net Account for %s, %s" % (ip, account)
-        hosts[ip]['tags'].append(account)
+    register_tag(ip, "BattleNet", account)
 
     # The following lines are for assisting in reverse engineering the protocol
 
@@ -394,65 +496,6 @@ def parse_teredo(ip, data):
         print "Discovered new Teredo Server: %s" % tun_server
         hosts[ip]["endpoints"].append(tun_server)
 
-
-def report():
-    timeline = ''
-
-    for hour in xrange(0, 24):
-        if len(str(hour)) > 1:
-            timeline = timeline + " " + str(hour)
-        else:
-            timeline = timeline + "  " + str(hour)
-
-    print ''
-
-    for host in hosts.keys():
-        print host
-
-        if "Time" in hosts[host].keys() and len(date_range) > 1:
-            timeline_padding = 0
-
-            for day in date_range:
-                if len(str(day)) > timeline_padding:
-                    timeline_padding = len(str(day))
-
-            print ' ' * timeline_padding + timeline
-
-            for day in date_range:
-                if day in hosts[host]["Time"].keys():
-                    usage = ""
-                    print day,
-                    print "-" * (timeline_padding - len(str(day))),
-
-                    for hour in xrange(0, 24):
-                        time = str(hour)
-
-                        if len(time) == 1:
-                            time = '0' + time
-
-                        if time in hosts[host]["Time"][day]:
-                            mark = 'X'
-                        else:
-                            mark = ' '
-
-                        usage = usage + mark + '  '
-
-                    print usage
-
-        if "Services" in hosts[host].keys():
-            print "Services"
-
-            for svc in hosts[host]["Services"]:
-                print "- %s" % svc
-
-        for data in hosts[host].keys():
-            if data is not "Time" and data is not "Services":
-                print data
-
-                for record in hosts[host][data]:
-                    print "- %s" % repr(record)
-
-        print ''
 
 class WritePcap(Exception):
     pass
