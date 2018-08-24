@@ -26,6 +26,45 @@ def list_to_host6(x):
     return ':'.join([''.join([hex(ord(x[i])).split('x')[-1], hex(ord(x[i+1])).split('x')[-1]]) for i in xrange(0, 16, 2)])
 
 
+def register_list(ip, keyword, data):
+    if keyword not in hosts[ip].keys():
+        hosts[ip][keyword] = list()
+
+    if data not in hosts[ip][keyword]:
+        hosts[ip][keyword].append(data)
+        print "Found information on %s: %s" % (ip, data)
+
+
+def register_dict(ip, keyword, key, value):
+    if keyword not in hosts[ip].keys():
+        hosts[ip][keyword] = dict()
+
+    if key not in hosts[ip][keyword].keys():
+        hosts[ip][keyword][key] = list()
+
+    if value not in hosts[ip][keyword][key]:
+        print "Found new information on %s: %s => %s" % (ip, key, value)
+        hosts[ip][keyword][key].append(value)
+
+
+def report_findings(ip, keyword):
+    if keyword in hosts[ip].keys():
+        if isinstance(hosts[ip][keyword], list):
+            if len(hosts[ip][keyword]) == 1:
+                print "%s: %s" % (keyword, hosts[ip][keyword][0])
+            else:
+                print keyword + ':'
+
+                for data in hosts[ip][keyword]:
+                    print "- %s" % data
+        elif isinstance(hosts[ip][keyword], dict):
+            print keyword + ":"
+
+            for port in hosts[ip][keyword].keys():
+                for value in hosts[ip][keyword][port]:
+                    print "- %s:%s" % (port, value)
+
+
 def register_host(ip):
     if ip not in hosts.keys():
         print "Found new host %s" % ip
@@ -50,96 +89,35 @@ def register_host(ip):
 
 
 def register_hostname(ip, hostname):
-    if "Hostname" not in hosts[ip].keys():
-        hosts[ip]["Hostname"] = list()
-
-    if hostname not in hosts[ip]["Hostname"]:
-        hosts[ip]["Hostname"].append(hostname)
-        print "Found %s has hostname %s" % (ip, hostname)
-
-
-def report_hostname(ip):
-    if "Hostname" in hosts[ip].keys():
-        if len(hosts[ip]["Hostname"]) == 1:
-            print "Hostname: %s" % hosts[ip]["Hostname"][0]
-        else:
-            print "Hostnames:"
-
-            for hostname in hosts[ip]["Hostname"]:
-                print "- %s" % hostname
+    register_list(ip, "Hostname", hostname)
 
 
 def register_interface(ip, interface):
-    if "Interfaces" not in hosts[ip].keys():
-        hosts[ip]["Interfaces"] = list()
+    register_list(ip, "Interfaces", interface)
 
-    if interface not in hosts[ip]["Interfaces"]:
-        hosts[ip]["Interfaces"].append(interface)
-        print "Found %s has hostname %s" % (ip, interface)
 
-def report_interface(ip):
-    if "Interfaces" in hosts[ip].keys():
-        print "Interfaces:"
-        print "- %s" % ip
-
-        for interface in hosts[ip]["Interfaces"]:
-            print "- %s" % interface
+def register_device(ip, device):
+    register_list(ip, "Device", device)
 
 
 def register_port(ip, port, proto, server):
-    if "Ports" not in hosts[ip].keys():
-        hosts[ip]["Ports"] = dict()
-
-    if str(port) + '/' + proto not in hosts[ip]["Ports"].keys():
-        print "Found new Port %s: %s %s" % (ip, str(port) + '/' + proto, server)
-        newline = True
-        hosts[ip]["Ports"][str(port) + '/' + proto] = server
-
-
-def report_port(ip):
-    if "Ports" in hosts[ip].keys():
-        print "Ports:"
-
-        for port in hosts[ip]["Ports"].keys():
-            print "- %s:%s" % (port, hosts[ip]["Ports"][port])
+    register_dict(ip, "Ports", str(port) + '/' + proto, server)
 
 
 def register_svc(ip, svc, details):
-    if "Services" not in hosts[ip].keys():
-        hosts[ip]["Services"] = dict()
-
-    if svc not in hosts[ip]["Services"].keys():
-        hosts[ip]["Services"][svc] = list()
-
-    if details not in hosts[ip]["Services"][svc]:
-        hosts[ip]["Services"][svc].append(details)
-        print "Found new service for %s: %s" % (ip, svc)
-
-
-def report_svc(ip):
-    if "Services" in hosts[ip].keys():
-        print "Services"
-
-        for value in hosts[ip]["Services"]:
-            print "- %s" % value
+    register_dict(ip, "Services", svc, details)
 
 
 def register_tag(ip, system, account):
-    if 'Tags' not in hosts[ip].keys():
-        hosts[ip]['Tags'] = dict()
-
-    if account not in hosts[ip]['Tags']:
-        print "Discovered %s Account for %s, %s" % (system, ip, account)
-        hosts[ip]['Tags'].append(account)
+    register_dict(ip, "Tags", system, account)
 
 
-def report_tag(ip):
-    if 'Tags' in hosts[ip].keys():
-        print "Tags"
+def register_extras(ip, extra):
+    register_list(ip, "Extras", extra)
 
-        for system in hosts[ip]['Tags'].keys():
-            for account in hosts[ip]['Tags'][system]:
-                print "- %s" % ' '.join([system, account])
+
+def register_user_ageent(ip, user_agent):
+    register_list(ip, "User-Agent", user_agent)
 
 
 def report_timeline(ip):
@@ -163,7 +141,7 @@ def report_timeline(ip):
         for day in date_range:
             if day in hosts[ip]["Time"].keys():
                 usage = ""
-                print day,
+                print " " + day,
                 print "-" * (timeline_padding - len(str(day))),
 
                 for hour in xrange(0, 24):
@@ -189,10 +167,19 @@ def report():
         print host
 
         report_timeline(host)
-        report_hostname(host)
-        report_interface(host)
-        report_svc(host)
-        report_tag(host)
+        report_findings(host, "Hostname")
+
+        keyword = "Interfaces"
+
+        if keyword in hosts[host].keys():
+            hosts[host][keyword].append(host)
+            report_findings(host, keyword)
+
+        report_findings(host, "Ports")
+        report_findings(host, "Services")
+        report_findings(host, "Tags")
+        report_findings(host, "Extras")
+        report_findings(host, "User-Agent")
 
         print ''
 
@@ -288,7 +275,7 @@ def parse_mdns(ip, data):
 
         offset = offset + 2
 
-        if rtype == 1: # Host Address RR
+        if rtype == 1:  # Host Address RR
             offset = offset + 8
             register_hostname(ip, svc_type)
 
@@ -321,15 +308,8 @@ def parse_mdns(ip, data):
 
 
 def parse_ssdp(ip, data):
-    url = ''
     proto = "unk"
     port = None
-    server = ''
-    device = list()
-    user_agent = ''
-    extras = list()
-
-    newline = False
 
     ssrp = data.splitlines()
     method = ssrp[0].split(' ')[0]
@@ -372,93 +352,53 @@ def parse_ssdp(ip, data):
                     print "SSRP Unknown Protocol: %s" % url
                     raise WritePcap
 
+            register_port(ip, port, proto, "")
+
         elif field[0].upper() == "SERVER":
             if field[1][:17] == "Microsoft-Windows":
                 win_ver = field[1][18:21]
 
                 if win_ver == "5.0":
-                    device.append("Windows 2000")
+                    register_device(ip, "Windows 2000")
                 elif win_ver == "5.1":
-                    device.append("Windows XP")
+                    register_device(ip, "Windows XP")
                 elif win_ver == "5.2":
-                    device.append("Windows XP Professional x64")
+                    register_device(ip, "Windows XP Professional x64")
                 elif win_ver == "6.0":
-                    device.append("Windows Vista")
+                    register_device(ip, "Windows Vista")
                 elif win_ver == "6.1":
-                    device.append("Windows 7")
+                    register_device(ip, "Windows 7")
                 elif win_ver == "6.2":
-                    device.append("Windows 8")
+                    register_device(ip, "Windows 8")
                 elif win_ver == "6.3":
-                    device.append("Windows 8.1")
+                    register_device(ip, "Windows 8.1")
                 elif field[1][18:22] == "10.0":
-                    device.append("Windows 10")
+                    register_device(ip, "Windows 10")
                 else:
                     print "Unknown windows version %s" % field[1]
                     raise WritePcap
-            server = field[1]
+
+            register_device(ip, field[1])
         elif field[0] == "NT":
             if "device:" in field[1]:
-                device.append(field[1].split("device:")[1].split(':')[0])
+                register_device(ip, field[1].split("device:")[1].split(':')[0])
         elif field[0].upper() == "USER-AGENT":
             user_agent = field[1]
 
             if user_agent[:13] == "Google Chrome":
-                device.append(user_agent.split(' ')[2])
+                register_device(ip, user_agent.split(' ')[2])
                 user_agent = ' '.join(user_agent.split(' ')[:2])
+
+            register_user_ageent(ip, user_agent)
         elif field[0].upper() == "X-SONOS-SESSIONSECONDS":
             pass
         elif field[0].upper()[:2] == "X-":
-            extras.append(field)
+            register_extras(ip, field)
         elif field[0].upper() == "CONSOLENAME.XBOX.COM":
-            device.append(field[1])
+            register_device(ip, field[1])
         else:
             print "Unknown SSRP Field: %s:%s" % (field[0], field[1:])
             raise WritePcap
-
-    # parsing done, now time to store the results
-
-    if url != '':
-        if "URLs" not in hosts[ip].keys():
-            hosts[ip]["URLs"] = list()
-
-        if url not in hosts[ip]["URLs"]:
-            print "Found new URL %s: %s" % (ip, url)
-            newline = True
-            hosts[ip]["URLs"].append(url)
-
-    if port is not None:
-        register_port(ip, port, proto, server)
-
-    if len(device) > 0:
-        if "Device" not in hosts[ip].keys():
-            hosts[ip]["Device"] = list()
-
-        for devtype in device:
-            if devtype not in hosts[ip]["Device"]:
-                print "Found new Device Type %s: %s" % (ip, devtype)
-                newline = True
-                hosts[ip]["Device"].append(devtype)
-
-    if user_agent != '':
-        if "UserAgent" not in hosts[ip].keys():
-            hosts[ip]["UserAgent"] = list()
-
-        if user_agent not in hosts[ip]["UserAgent"]:
-            print "Found new User Agent: %s, %s" % (ip, user_agent)
-            newline = True
-            hosts[ip]["UserAgent"].append(user_agent)
-
-    for extra in extras:
-        if "Extras" not in hosts[ip].keys():
-            hosts[ip]["Extras"] = list()
-
-        if extra not in hosts[ip]["Extras"]:
-            print "Found new SSRP Extra: %s, %s" % (ip, extra)
-            newline = True
-            hosts[ip]["Extras"].append(extra)
-
-    if newline:  # Done printing updates
-        print ''
 
 
 def parse_teredo(ip, data):
