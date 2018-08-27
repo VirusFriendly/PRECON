@@ -26,6 +26,28 @@ def list_to_host6(x):
     return ':'.join([''.join([hex(ord(x[i])).split('x')[-1], hex(ord(x[i+1])).split('x')[-1]]) for i in xrange(0, 16, 2)])
 
 
+def url_to_protocol(url):
+    port = 0
+    hostname = url.split(':')[1:]
+
+    if len(url.split(':')) > 2:
+        port = ord(url.explit(':')[2].split('/')[0])
+
+    if url[:4] == "http":
+        proto = "tcp"
+
+        if port == 0:  # deduce port number
+            if url[4] == 's':
+                port = 443
+            else:
+                port = 80
+    else:
+        print "Unknown Protocol: %s" % url
+        raise WritePcap
+
+    return hostname, port, proto
+
+
 def register_list(ip, keyword, data):
     if keyword not in hosts[ip].keys():
         hosts[ip][keyword] = list()
@@ -307,6 +329,28 @@ def parse_mdns(ip, data):
             domain_name, _ = parse_mdns_name(data, offset)
             register_svc(ip, svc_type, domain_name)
             offset = offset + length
+
+            if svc_type.split('.')[0] == "_googlecast":
+                if "Extras" in hosts[ip].keys():
+                    for extra in hosts[ip]["Extras"]:
+                        if extra.split('=')[0] == "md":
+                            register_device(ip, extra.split('=')[1])
+                        elif extra.split('=')[0] == "fn":
+                            register_hostname(ip, extra.split('=')[1])
+            elif svc_type.split('.')[0] == "_ipp":
+                if "Extras" in hosts[ip].keys():
+                    for extra in hosts[ip]["Extras"]:
+                        if extra.split('=')[0] == "ty":
+                            register_device(ip, extra.split('=')[1])
+                        elif extra.split('=')[0] == "product":
+                            register_device(ip, extra.split('=')[1])
+                        elif extra.split('=')[0] == "adminurl":
+                            hostname, port, protocol = url_to_protocol(extra.split('=')[1])
+                            register_port(ip, port, protocol, '')
+
+                            if hostname != ip:
+                                register_hostname(ip, hostname)
+
         elif rtype == 16:  # TXT RR
             offset = offset + 6
 
