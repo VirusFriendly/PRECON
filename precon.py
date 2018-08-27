@@ -30,9 +30,9 @@ def register_list(ip, keyword, data):
     if keyword not in hosts[ip].keys():
         hosts[ip][keyword] = list()
 
-    if data not in hosts[ip][keyword]:
+    if len(data) > 0 and data not in hosts[ip][keyword]:
         hosts[ip][keyword].append(data)
-        print "Found information on %s: %s" % (ip, data)
+        print "Found %s information on %s: %s" % (keyword, ip, data)
 
 
 def register_dict(ip, keyword, key, value):
@@ -42,27 +42,34 @@ def register_dict(ip, keyword, key, value):
     if key not in hosts[ip][keyword].keys():
         hosts[ip][keyword][key] = list()
 
-    if value not in hosts[ip][keyword][key]:
-        print "Found new information on %s: %s => %s" % (ip, key, value)
+    if len(value) > 0 and value not in hosts[ip][keyword][key]:
+        print "Found %s information on %s: %s => %s" % (keyword, ip, key, value)
         hosts[ip][keyword][key].append(value)
 
 
 def report_findings(ip, keyword):
+    findings = ''
+
     if keyword in hosts[ip].keys():
         if isinstance(hosts[ip][keyword], list):
-            if len(hosts[ip][keyword]) == 1:
-                print "%s: %s" % (keyword, hosts[ip][keyword][0])
-            else:
-                print keyword + ':'
+            findings = findings + keyword
+
+            if len(hosts[ip][keyword]) > 1:
+                findings = findings + '\n'
 
                 for data in hosts[ip][keyword]:
-                    print "- %s" % data
+                    findings = findings + "- %s" % data + '\n'
         elif isinstance(hosts[ip][keyword], dict):
-            print keyword + ":"
+            findings = findings + keyword + ":"
+
+            if len(hosts[ip][keyword].keys()) > 1:
+                findings = findings + '\n'
 
             for port in hosts[ip][keyword].keys():
                 for value in hosts[ip][keyword][port]:
-                    print "- %s:%s" % (port, value)
+                    findings = findings + "- %s: %s" % (port, value) + '\n'
+
+    return findings
 
 
 def register_host(ip):
@@ -121,67 +128,74 @@ def register_user_ageent(ip, user_agent):
 
 
 def report_timeline(ip):
-    if "Time" in hosts[ip].keys() and len(date_range) > 1:
-        timeline = ' '
+    global date_range
 
-        for hour in xrange(0, 24):
-            if len(str(hour)) > 1:
-                timeline = timeline + " " + str(hour)
-            else:
-                timeline = timeline + "  " + str(hour)
+    #if "Time" in hosts[ip].keys() and len(date_range) > 1:
+    timeline = ''
 
-        timeline_padding = 0
+    for hour in xrange(0, 24):
+        if len(str(hour)) > 1:
+            timeline = timeline + " " + str(hour)
+        else:
+            timeline = timeline + "  " + str(hour)
 
-        for day in date_range:
-            if len(str(day)) > timeline_padding:
-                timeline_padding = len(str(day))
+    timeline_padding = 0
 
-        print ' ' + ' ' * timeline_padding + timeline
+    for day in date_range:
+        if len(str(day)) > timeline_padding:
+            timeline_padding = len(str(day))
 
-        for day in date_range:
-            if day in hosts[ip]["Time"].keys():
-                usage = ""
-                print " " + day,
-                print "-" * (timeline_padding - len(str(day))),
+    time = ' ' + ' ' * timeline_padding + timeline + '\n'
 
-                for hour in xrange(0, 24):
-                    time = str(hour)
+    for day in date_range:
+        if day in hosts[ip]["Time"].keys():
+            usage = ""
+            time = time + " " + day + ' ' + "-" * (timeline_padding - len(str(day))) + ' '
 
-                    if len(time) == 1:
-                        time = '0' + time
+            for hour in xrange(0, 24):
+                time_str = str(hour)
 
-                    if time in hosts[ip]["Time"][day]:
-                        mark = 'X'
-                    else:
-                        mark = ' '
+                if len(time_str) == 1:
+                    time_str = '0' + time_str
 
-                    usage = usage + mark + '  '
+                if time_str in hosts[ip]["Time"][day]:
+                    mark = 'X'
+                else:
+                    mark = ' '
 
-                print usage
+                usage = usage + mark + '  '
+
+        usage = usage + '\n'
+
+    return time + usage
 
 
 def report():
-    print ''
+    findings = ''
 
     for host in hosts.keys():
-        print host
+        findings = findings + host + '\n'
 
-        report_timeline(host)
-        report_findings(host, "Hostname")
+        findings = findings + report_timeline(host)
+        findings = findings + report_findings(host, "Hostname")
 
         keyword = "Interfaces"
 
         if keyword in hosts[host].keys():
-            hosts[host][keyword].append(host)
-            report_findings(host, keyword)
+            if host not in hosts[host][keyword]:
+                hosts[host][keyword].append(host)
 
-        report_findings(host, "Ports")
-        report_findings(host, "Services")
-        report_findings(host, "Tags")
-        report_findings(host, "Extras")
-        report_findings(host, "User-Agent")
+            findings = findings + report_findings(host, keyword)
 
-        print ''
+        findings = findings + report_findings(host, "Ports")
+        findings = findings + report_findings(host, "Services")
+        findings = findings + report_findings(host, "Tags")
+        findings = findings + report_findings(host, "Extras")
+        findings = findings + report_findings(host, "User-Agent")
+
+        findings = findings + '\n'
+
+    return findings
 
 
 def parse_bnet(ip, data):
@@ -240,6 +254,9 @@ def parse_mdns_text(data):
         if length < 0xc0:
             texts.append(data[pos+1:pos+1+length])
             pos = pos+1+length
+
+            if pos < len(data):
+                length = ord(data[pos])
         else:
             print "Text field contains dns compression"
             raise WritePcap
@@ -296,15 +313,24 @@ def parse_mdns(ip, data):
             length = list_to_num(data[offset:offset + 2])
             offset = offset + 2
 
-            txts = parse_mdns_text(data[offset:offset+length+1])
-            register_svc(ip, svc_type, txts)
-            offset = offset + length
+            for txt in parse_mdns_text(data[offset:offset+length+1]):
+                register_extras(ip, txt)
 
-        # elif rtype == 33:
-        #    offset = offset + 8
+            offset = offset + length
+        elif rtype == 33:  # Service RR
+            offset = offset + 6
+
+            length = list_to_num(data[offset:offset + 2])
+
+            port = list_to_num(data[offset+6:offset+8])
+            register_port(ip, port, svc_type.split('.')[-2][1:], svc_type.split('.')[-3][1:])
+
+            offset = offset + length
         else:
             print "New rtype %d" % rtype
             raise WritePcap
+
+    raise WritePcap
 
 
 def parse_ssdp(ip, data):
@@ -466,7 +492,10 @@ try:
         r, w, e = select.select([sys.stdin], [], [], 0)  # detect if enter was pressed
         if len(r) > 0:
             sys.stdin.readline()  # clear the return
-            report()
+            print report()
+
+            with open("report.txt", 'w') as report_file:
+                report_file.write(report())
 
         if [ord(pkt[12]), ord(pkt[13])] != [8, 0]:
             # print "Not an IP packet"
@@ -529,4 +558,5 @@ try:
             # print "!",
             ignorance.writepkt(pkt, ts)
 except KeyboardInterrupt:
-    report()
+    with open("report.txt", 'w') as report_file:
+        report_file.write(report())
