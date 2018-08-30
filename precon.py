@@ -52,9 +52,11 @@ def register_list(ip, keyword, data):
     if keyword not in hosts[ip].keys():
         hosts[ip][keyword] = list()
 
-    if len(data) > 0 and data not in hosts[ip][keyword]:
+    if data not in hosts[ip][keyword]:
         hosts[ip][keyword].append(data)
-        print "Found %s information on %s: %s" % (keyword, ip, data)
+
+        if len(data) > 0:
+            print "Found %s information on %s: %s" % (keyword, ip, data)
 
 
 def register_dict(ip, keyword, key, value):
@@ -74,22 +76,22 @@ def report_findings(ip, keyword):
 
     if keyword in hosts[ip].keys():
         if isinstance(hosts[ip][keyword], list):
-            findings = findings + keyword
+            findings = findings + keyword + ': '
 
             if len(hosts[ip][keyword]) > 1:
-                findings = findings + '\n'
-
-                for data in hosts[ip][keyword]:
-                    findings = findings + "- %s" % data + '\n'
+                findings = findings + "\n- " + "\n- ".join(hosts[ip][keyword]) + '\n'
+            elif len(hosts[ip][keyword]) == 1:
+                findings = findings + hosts[ip][keyword][0] + '\n'
+            else:
+                pass
+                # print "Error: (%s) %s - %s" % (ip, keyword, hosts[ip][keyword])
         elif isinstance(hosts[ip][keyword], dict):
-            findings = findings + keyword + ":"
+            findings = findings + keyword + ": "
 
             if len(hosts[ip][keyword].keys()) > 1:
-                findings = findings + '\n'
-
-            for port in hosts[ip][keyword].keys():
-                for value in hosts[ip][keyword][port]:
-                    findings = findings + "- %s: %s" % (port, value) + '\n'
+                findings = findings + "\n- " + "\n- ".join([x + ": " + ' '.join(hosts[ip][keyword][x]) for x in hosts[ip][keyword].keys()])
+            else:
+                findings = findings + hosts[ip][keyword].keys()[0] + ": " + ' '.join(hosts[ip][keyword][hosts[ip][keyword].keys()[0]]) + '\n'
 
     return findings
 
@@ -168,10 +170,10 @@ def report_timeline(ip):
             timeline_padding = len(str(day))
 
     time = ' ' + ' ' * timeline_padding + timeline + '\n'
+    usage = ''
 
     for day in date_range:
         if day in hosts[ip]["Time"].keys():
-            usage = ""
             time = time + " " + day + ' ' + "-" * (timeline_padding - len(str(day))) + ' '
 
             for hour in xrange(0, 24):
@@ -360,6 +362,14 @@ def parse_mdns(ip, data):
             for txt in parse_mdns_text(data[offset:offset+length+1]):
                 register_extras(ip, txt)
 
+                if txt.split('=')[0] == 'osxvers':
+                    register_device(ip, "OSX 10." + txt.split('=')[1])
+
+                    for extra in hosts[ip]["Extras"]:
+                        if extra.split('=')[0] == 'model':
+                            register_device(ip, '.'.join(extra.split('=')[1].split(',')))
+
+
             offset = offset + length
         elif rtype == 33:  # Service RR
             offset = offset + 6
@@ -536,10 +546,11 @@ try:
         r, w, e = select.select([sys.stdin], [], [], 0)  # detect if enter was pressed
         if len(r) > 0:
             sys.stdin.readline()  # clear the return
-            print report()
 
             with open("report.txt", 'w') as report_file:
                 report_file.write(report())
+
+            print "\nFindings written to report.txt\n"
 
         if [ord(pkt[12]), ord(pkt[13])] != [8, 0]:
             # print "Not an IP packet"
