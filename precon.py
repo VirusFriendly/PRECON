@@ -28,7 +28,7 @@ def list_to_host6(x):
 
 def url_to_protocol(url):
     port = 0
-    hostname = url.split(':')[1:]
+    hostname = url.split('://')[1].split(':')[0].split('/')[0]
 
     if len(url.split(':')) > 2:
         port = ord(url.explit(':')[2].split('/')[0])
@@ -265,10 +265,9 @@ def parse_mdns_name(data, offset):
             else:
                 length = 0
         else:
-            x, _ = parse_mdns_name(data, ord(data[pos+1]))
+            x, _ = parse_mdns_name(data, (ord(data[pos]) - 0xc0) * 256 + ord(data[pos+1]))
             name.append(x)
             pos = pos+1
-            length = 0
             break
 
     return '.'.join(name), pos+1
@@ -286,7 +285,7 @@ def parse_mdns_text(data, pkt):
             pos = pos+1+length
         else:
             if pos + 1 > len(data):
-                x, _ = parse_mdns_name(pkt, ord(data[pos+1]))
+                x, _ = parse_mdns_name(pkt, (ord(data[pos]) - 0xc0) * 256 + ord(data[pos+1]))
                 texts.append(x)
                 pos = pos + 2
                 print ":)"
@@ -298,8 +297,7 @@ def parse_mdns_text(data, pkt):
 
 def parse_mdns(ip, data):
     if ord(data[2]) != 0x84:
-        # Not an authortive response packet
-        # print repr(data[0:5]),
+        #print "Not an authortive response"
         return
 
     questions = list_to_num(data[4:6])
@@ -317,7 +315,7 @@ def parse_mdns(ip, data):
 
     offset = 12
 
-    for _ in xrange(answer_rr):
+    for rr_entry in xrange(answer_rr + additional_rr):
         svc_type, offset = parse_mdns_name(data, offset)
 
         rtype = list_to_num(data[offset:offset+2])
@@ -338,30 +336,9 @@ def parse_mdns(ip, data):
             length = list_to_num(data[offset:offset + 2])
             offset = offset + 2
 
-            domain_name, _ = parse_mdns_name(data, offset)
+            domain_name, unused = parse_mdns_name(data, offset)
             register_svc(ip, svc_type, domain_name)
             offset = offset + length
-
-            if svc_type.split('.')[0] == "_googlecast":
-                if "Extras" in hosts[ip].keys():
-                    for extra in hosts[ip]["Extras"]:
-                        if extra.split('=')[0] == "md":
-                            register_device(ip, extra.split('=')[1])
-                        elif extra.split('=')[0] == "fn":
-                            register_hostname(ip, extra.split('=')[1])
-            elif svc_type.split('.')[0] == "_ipp":
-                if "Extras" in hosts[ip].keys():
-                    for extra in hosts[ip]["Extras"]:
-                        if extra.split('=')[0] == "ty":
-                            register_device(ip, extra.split('=')[1])
-                        elif extra.split('=')[0] == "product":
-                            register_device(ip, extra.split('=')[1])
-                        elif extra.split('=')[0] == "adminurl":
-                            hostname, port, protocol = url_to_protocol(extra.split('=')[1])
-                            register_port(ip, port, protocol, '')
-
-                            if hostname != ip:
-                                register_hostname(ip, hostname)
 
         elif rtype == 16:  # TXT RR
             offset = offset + 6
@@ -370,14 +347,31 @@ def parse_mdns(ip, data):
             offset = offset + 2
 
             for txt in parse_mdns_text(data[offset:offset+length+1], data):
-                register_extras(ip, txt)
+                if '=' in txt:
+                    if txt.split('=')[1] == '':
+                        pass
+                    elif txt.split('=')[0] == 'osxvers':
+                        register_device(ip, "OSX 10." + txt.split('=')[1])
+                    elif txt.split('=')[0] == 'model':
+                        register_device(ip, '.'.join(txt.split('=')[1].split(',')))
+                    elif txt.split('=')[0] == "md":
+                        register_device(ip, txt.split('=')[1])
+                    elif txt.split('=')[0] == "fn":
+                        register_hostname(ip, txt.split('=')[1])
+                    elif txt.split('=')[0] == "ty":
+                        register_device(ip, txt.split('=')[1])
+                    elif txt.split('=')[0] == "product":
+                        register_device(ip, txt.split('=')[1])
+                    elif txt.split('=')[0] == "adminurl":
+                        hostname, port, protocol = url_to_protocol(txt.split('=')[1])
+                        register_port(ip, port, protocol, '')
 
-                if txt.split('=')[0] == 'osxvers':
-                    register_device(ip, "OSX 10." + txt.split('=')[1])
-
-                    for extra in hosts[ip]["Extras"]:
-                        if extra.split('=')[0] == 'model':
-                            register_device(ip, '.'.join(extra.split('=')[1].split(',')))
+                        if hostname != ip:
+                            register_hostname(ip, hostname)
+                    else:
+                        register_extras(ip, txt)
+                else:
+                    register_extras(ip, txt)
 
             offset = offset + length
         elif rtype == 28:  # AAAA RR
@@ -392,13 +386,17 @@ def parse_mdns(ip, data):
             port = list_to_num(data[offset+6:offset+8])
             register_port(ip, port, svc_type.split('.')[-2][1:], svc_type.split('.')[-3][1:])
 
-            offset = offset + length
+            offset = offset + 2 + length
+        elif rtype in [41, 47]:  # OPT, NSEC
+            offset = offset + 6
+
+            length = list_to_num(data[offset:offset + 2])
+
+            offset = offset + 2 + length
         else:
             print "New rtype %d (%s, %s)" % (rtype, ip, svc_type)
+            print "Processed %d records of %d answers and %d additional" % (rr_entry + 1, answer_rr, additional_rr)
             raise WritePcap
-
-    if additional_rr > 0:
-        raise WritePcap
 
 
 def parse_ssdp(ip, data):
