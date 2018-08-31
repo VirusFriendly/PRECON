@@ -124,6 +124,12 @@ def register_host(ip):
 
 
 def register_hostname(ip, hostname):
+    if hostname == ip:
+        return
+
+    if "Interfaces" in hosts[ip].keys() and hostname in hosts[ip]["Interfaces"]:
+        return
+
     register_list(ip, "Hostname", hostname)
 
 
@@ -362,12 +368,10 @@ def parse_mdns(ip, data):
                         register_device(ip, txt.split('=')[1])
                     elif txt.split('=')[0] == "product":
                         register_device(ip, txt.split('=')[1])
-                    elif txt.split('=')[0] == "adminurl":
+                    elif txt.split('=')[0] in ["adminurl", "url"]:
                         hostname, port, protocol = url_to_protocol(txt.split('=')[1])
                         register_port(ip, port, protocol, '')
-
-                        if hostname != ip:
-                            register_hostname(ip, hostname)
+                        register_hostname(ip, hostname)
                     else:
                         register_extras(ip, txt)
                 else:
