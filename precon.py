@@ -49,6 +49,10 @@ def url_to_protocol(url):
 
 
 def register_list(ip, keyword, data):
+    if data is list:
+        print "Error %s, %s -> %s" % (ip, keyword, repr(data))
+        return
+
     if keyword not in hosts[ip].keys():
         hosts[ip][keyword] = list()
 
@@ -89,7 +93,7 @@ def report_findings(ip, keyword):
             findings = findings + keyword + ": "
 
             if len(hosts[ip][keyword].keys()) > 1:
-                findings = findings + "\n- " + "\n- ".join([x + ": " + ' '.join(hosts[ip][keyword][x]) for x in hosts[ip][keyword].keys()])
+                findings = findings + "\n- " + "\n- ".join([x + ": " + ' '.join(hosts[ip][keyword][x]) for x in hosts[ip][keyword].keys()]) + '\n'
             else:
                 findings = findings + hosts[ip][keyword].keys()[0] + ": " + ' '.join(hosts[ip][keyword][hosts[ip][keyword].keys()[0]]) + '\n'
 
@@ -263,27 +267,31 @@ def parse_mdns_name(data, offset):
         else:
             x, _ = parse_mdns_name(data, ord(data[pos+1]))
             name.append(x)
-            pos = pos+2
+            pos = pos+1
             length = 0
+            break
 
     return '.'.join(name), pos+1
 
 
-def parse_mdns_text(data):
+def parse_mdns_text(data, pkt):
     texts = list()
-    length = ord(data[0])
     pos = 0
 
     while pos < len(data):
+        length = ord(data[pos])
+
         if length < 0xc0:
             texts.append(data[pos+1:pos+1+length])
             pos = pos+1+length
-
-            if pos < len(data):
-                length = ord(data[pos])
         else:
-            print "Text field contains dns compression"
-            raise WritePcap
+            if pos + 1 > len(data):
+                x, _ = parse_mdns_name(pkt, ord(data[pos+1]))
+                texts.append(x)
+                pos = pos + 2
+                print ":)"
+            else:
+                pos = pos + 1
 
     return texts
 
@@ -322,6 +330,8 @@ def parse_mdns(ip, data):
 
             if list_to_host(data[offset:offset+4]) != ip:
                 register_interface(ip, list_to_host(data[offset:offset+4]))
+
+            offset = offset + 4
         elif rtype == 12:  # PTR RR
             offset = offset + 6
 
@@ -359,7 +369,7 @@ def parse_mdns(ip, data):
             length = list_to_num(data[offset:offset + 2])
             offset = offset + 2
 
-            for txt in parse_mdns_text(data[offset:offset+length+1]):
+            for txt in parse_mdns_text(data[offset:offset+length+1], data):
                 register_extras(ip, txt)
 
                 if txt.split('=')[0] == 'osxvers':
@@ -369,8 +379,11 @@ def parse_mdns(ip, data):
                         if extra.split('=')[0] == 'model':
                             register_device(ip, '.'.join(extra.split('=')[1].split(',')))
 
-
             offset = offset + length
+        elif rtype == 28:  # AAAA RR
+            offset = offset + 8
+            register_interface(ip, list_to_host6(data[offset:offset+16]))
+            offset = offset + 16
         elif rtype == 33:  # Service RR
             offset = offset + 6
 
@@ -381,10 +394,11 @@ def parse_mdns(ip, data):
 
             offset = offset + length
         else:
-            print "New rtype %d" % rtype
+            print "New rtype %d (%s, %s)" % (rtype, ip, svc_type)
             raise WritePcap
 
-    raise WritePcap
+    if additional_rr > 0:
+        raise WritePcap
 
 
 def parse_ssdp(ip, data):
@@ -473,7 +487,7 @@ def parse_ssdp(ip, data):
         elif field[0].upper() == "X-SONOS-SESSIONSECONDS":
             pass
         elif field[0].upper()[:2] == "X-":
-            register_extras(ip, field)
+            register_extras(ip, '='.join(field))
         elif field[0].upper() == "CONSOLENAME.XBOX.COM":
             register_device(ip, field[1])
         else:
