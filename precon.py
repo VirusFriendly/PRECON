@@ -257,6 +257,126 @@ def parse_bnet(ip, data):
     # fields[9] is a rather peculiar value whose MSB changes more than the LSB
 
 
+def parse_dhcp(ip, data):
+    dhcp_options = dict()
+
+    if data[15*16 - 4:15*16] != "c\x82Sc":
+        print repr(data[15*16 - 4:15*16])
+        raise WritePcap
+
+    if ip == "0.0.0.0":
+        if list_to_host(data[12:16]) != "0.0.0.0":
+            ip = list_to_num(data[12:16])
+
+    if list_to_host(data[16:20]) != "0.0.0.0" or list_to_host(data[20:24]) != "0.0.0.0" or list_to_host(data[24:28]) != "0.0.0.0":
+        print "Found interesting dhcp"
+        raise WritePcap
+
+    offset = 15*16
+
+    while offset + 1 < len(data) and ord(data[offset]) != 255:
+        option = ord(data[offset])
+        length = ord(data[offset + 1])
+
+        if offset + length > len(data):
+            break
+
+        offset = offset + 2
+
+        if option in [1, 51, 53, 55, 57, 58, 59, 145]:  # DHCP Options we dont care about
+            pass
+        elif option == 3:
+            if length == 4:
+                dhcp_options["Router IP Address"] = list_to_host(data[offset:offset+length])
+            else:
+                print "DHCP Router address length = %d" % length
+        elif option == 6:
+            if length % 4 == 0:
+                dhcp_options["DNS Servers"] = list()
+
+                for x in xrange(int(length/4)):
+                    dhcp_options["DNS Servers"].append(list_to_host(data[offset + (x*4): offset + (x*4) + 4]))
+        elif option == 12:
+            dhcp_options["Host Name"] = data[offset:offset + length]
+        elif option == 15:
+            dhcp_options["Domain Name"] = data[offset:offset + length]
+        elif option == 50:
+            if length == 4:
+                dhcp_options["Requested IP Address"] = list_to_host(data[offset:offset+length])
+            else:
+                print "DHCP address length = %d" % length
+                raise WritePcap
+        elif option == 54:
+            if length == 4:
+                dhcp_options["DHCP Server Identifier"] = list_to_host(data[offset:offset+length])
+            else:
+                print "DHCP address length = %d" % length
+                raise WritePcap
+        elif option == 60:
+            dhcp_options["Vendor Class Identifier"] = data[offset:data + length]
+        elif option == 61:
+            if ord(data[offset]) == 0:
+                dhcp_options["Client Identifier"] = dict()
+                dhcp_options["Client Identifier"]["Type"] = ord(data[offset])
+                dhcp_options["Client Identifier"]["Identifier"] = data[offset+1:offset+length]
+            elif ord(data[offset]) in [0xff, 1]:
+                pass
+            else:
+                print "DHCP: Strange Vendor Class Identifier: %d" % ord(data[offset])
+                raise WritePcap
+        elif option == 81:
+            if ord(data[offset]) != 0 or ord(data[offset + 1]) != 0 or ord(data[offset + 2]) != 0:
+                print "DHCP: Strange Client FQDN"
+                raise WritePcap
+
+            dhcp_options["Client FQDN"] = data[offset + 3:offset + length]
+        else:
+            print "DHCP Unknown option: %d" % option
+            raise WritePcap
+
+        offset = offset + length
+
+    if ip == "0.0.0.0":
+        if "Requested IP Address" in dhcp_options.keys() and dhcp_options["Requested IP Address"] != "0.0.0.0":
+            ip = dhcp_options["Requested IP Address"]
+        elif list_to_host(data[12:16]) != "0.0.0.0":
+            ip = list_to_host(data[12:16])
+        else:
+            return
+
+        register_host(ip)
+    elif "Requested IP Address" in dhcp_options.keys() and dhcp_options["Requested IP Address"] != ip:
+        register_interface(ip, dhcp_options["Requested IP Address"])
+    elif list_to_host(data[12:16]) != "0.0.0.0":
+        register_interface(ip, list_to_host(data[12:16]))
+
+    for keyword in dhcp_options.keys():
+        if keyword == "Host Name":
+            register_hostname(ip, dhcp_options[keyword])
+        elif keyword == "Domain Name":
+            register_hostname(ip, dhcp_options[keyword])
+        elif keyword == "DNS Servers":
+            for dns_server in dhcp_options[keyword]:
+                register_host(dns_server)
+                register_extras(dns_server, "DNS Server")
+        elif keyword == "Router IP Address":
+            register_host(dhcp_options[keyword])
+            register_extras(dhcp_options[keyword], "Default Gateway")
+        elif keyword == "DHCP Server Identifier":
+            register_host(dhcp_options[keyword])
+            register_extras(dhcp_options[keyword], "DHCP Server")
+        elif keyword == "Vendor Class Identifier":
+            register_device(ip, dhcp_options[keyword])
+        elif keyword == "Client Identifer":
+            register_extras(ip, "DHCP Client Identifier: " +dhcp_options[keyword]["Identifier"])
+        elif keyword == "Client FQDN":
+            register_hostname(ip, dhcp_options[keyword])
+        elif keyword == "Requested IP Address":
+            pass
+        else:
+            print "DHCP: Forgot to handle option %s" % keyword
+
+
 def parse_llmnr(ip, data):
     if list_to_num(data[6:8]) > 0:
         raise WritePcap
@@ -595,8 +715,9 @@ def parse_wsd(ip, data):
     #     ]
     # )
 
-    if 'soap:Envelope' in doc.keys() and 'soap:Body' in doc['soap:Envelope'].keys() and 'wsd:Resolve' in doc['soap:Envelope']['soap:Body'].keys() and len(doc['soap:Envelope']['soap:Body'].keys()) == 1:
-        return
+    if 'soap:Envelope' in doc.keys() and 'soap:Body' in doc['soap:Envelope'].keys():
+        if len(doc['soap:Envelope']['soap:Body'].keys()) == 1 and doc['soap:Envelope']['soap:Body'].keys()[0] in ['wsd:Resolve', 'wsd:Probe']:
+            return
 
     print repr(doc)
     raise WritePcap
@@ -662,16 +783,20 @@ try:
 
         src_host = list_to_host(pkt[ip_hdr + 12:ip_hdr + 16])
 
-        register_host(src_host)
+        if src_host != "0.0.0.0":
+            register_host(src_host)
 
         udp_hdr = ip_hdr + ip_sz
 
         svc_port = list_to_num(pkt[udp_hdr + 2: udp_hdr + 4])
 
         try:
-            if svc_port in [67, 68]:
+            if svc_port == 67:
+                # DHCP requests
+                parse_dhcp(src_host, pkt[udp_hdr + 8:])
+            elif svc_port == 68:
                 raise WritePcap
-                # I'll get around to this soon
+                # Probably ignore these DHCP replies
             elif svc_port == 1124:
                 # boring printer protocol
                 raise WritePcap
