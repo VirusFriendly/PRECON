@@ -5,6 +5,7 @@ import pcap
 import os
 import select
 import sys
+import xmltodict
 
 
 def list_to_num(x):
@@ -254,6 +255,11 @@ def parse_bnet(ip, data):
     # fields[7] is Region
     # fields[8] is unknown
     # fields[9] is a rather peculiar value whose MSB changes more than the LSB
+
+
+def parse_llmnr(ip, data):
+    if list_to_num(data[6:8]) > 0:
+        raise WritePcap
 
 
 def parse_mdns_name(data, offset):
@@ -554,6 +560,48 @@ def parse_teredo(ip, data):
         hosts[ip]["endpoints"].append(tun_server)
 
 
+def parse_wsd(ip, data):
+    doc = xmltodict.parse(data)
+
+    # OrderedDict(
+    #     [
+    #         (u'soap:Envelope', OrderedDict(
+    #             [
+    #                 (u'@xmlns:soap', u'http://www.w3.org/2003/05/soap-envelope'),
+    #                 (u'@xmlns:wsa', u'http://schemas.xmlsoap.org/ws/2004/08/addressing'),
+    #                 (u'@xmlns:wsd', u'http://schemas.xmlsoap.org/ws/2005/04/discovery'),
+    #                 (u'soap:Header', OrderedDict(
+    #                     [
+    #                         (u'wsa:To', u'urn:schemas-xmlsoap-org:ws:2005:04:discovery'),
+    #                         (u'wsa:Action', u'http://schemas.xmlsoap.org/ws/2005/04/discovery/Resolve'),
+    #                         (u'wsa:MessageID', u'urn:uuid:bc5cb458-8a6f-4424-853d-31dbbd241457')
+    #                     ]
+    #                 )),
+    #                 (u'soap:Body', OrderedDict(
+    #                     [
+    #                         (u'wsd:Resolve', OrderedDict(
+    #                             [
+    #                                 (u'wsa:EndpointReference', OrderedDict(
+    #                                     [
+    #                                         (u'wsa:Address', u'urn:uuid:00000000-0000-1000-8000-f80d60224c06')
+    #                                     ]
+    #                                 ))
+    #                             ]
+    #                         ))
+    #                     ]
+    #                 ))
+    #             ]
+    #         ))
+    #     ]
+    # )
+
+    if 'soap:Envelope' in doc.keys() and 'soap:Body' in doc['soap:Envelope'].keys() and 'wsd:Resolve' in doc['soap:Envelope']['soap:Body'].keys() and len(doc['soap:Envelope']['soap:Body'].keys()) == 1:
+        return
+
+    print repr(doc)
+    raise WritePcap
+
+
 class WritePcap(Exception):
     pass
 
@@ -624,25 +672,37 @@ try:
             if svc_port in [67, 68]:
                 raise WritePcap
                 # I'll get around to this soon
+            elif svc_port == 1124:
+                # boring printer protocol
+                raise WritePcap
             elif svc_port == 1228:
                 parse_bnet(src_host, pkt[udp_hdr + 8:])
             elif svc_port == 1900:
                 parse_ssdp(src_host, pkt[udp_hdr + 8:])
+            elif svc_port == 3289:
+                # boring printer protocol
+                raise WritePcap
             elif svc_port == 3544:
                 # Teredo IPv6 over UDP tunneling
                 parse_teredo(src_host, pkt[udp_hdr + 8:])
             elif svc_port == 3702:
                 # WS-Discovery - Generally looking for WSD enabled (HP) printers
-                raise WritePcap
+                parse_wsd(src_host, pkt[udp_hdr + 8:])
             elif svc_port == 5353:
                 parse_mdns(src_host, pkt[udp_hdr + 8:])
             elif svc_port == 5355:
-                raise WritePcap
                 # Link Local Name Resolution, but unlike mDNS responses are sent unicast
+                parse_llmnr(src_host, pkt[udp_hdr + 8:])
             elif svc_port == 7765:
                 raise WritePcap
                 # WonderShare MobileGo.
                 # Used to manage android phone, not really interesting except to retrieve operating system and computer name
+            elif svc_port == 48000:
+                # ???
+                raise WritePcap
+            elif svc_port == 57621:
+                # Spotify UDP
+                raise WritePcap
             else:  # Artificial Ignorance Catch
                 # print "%s:%d" % (src_host, svc_port)
                 raise WritePcap
