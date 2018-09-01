@@ -345,7 +345,28 @@ def parse_mdns(ip, data):
             domain_name, unused = parse_mdns_name(data, offset)
             register_svc(ip, svc_type, domain_name)
             offset = offset + length
+        elif rtype == 13:  # HINFO RR
+            offset = offset + 6
+            length = list_to_num(data[offset:offset + 2])
+            offset = offset + 2
 
+            cpu_length = ord(data[offset])
+            offset = offset + 1
+
+            if cpu_length > length:
+                print "Length mismatch: HINFO Length %d, CPU Length %d" % (length, cpu_length)
+                raise WritePcap
+
+            register_device(ip, data[offset:offset + cpu_length])
+            offset = offset + cpu_length
+            os_length = ord(data[offset])
+
+            if os_length + cpu_length + 2 > length:
+                print "Length mismatch: HINFO Length %d, CPU Length %d, OS Length %d" % (length, cpu_length, os_length)
+                raise WritePcap
+
+            register_device(ip, data[offset:offset + os_length])
+            offset = offset + os_length
         elif rtype == 16:  # TXT RR
             offset = offset + 6
 
