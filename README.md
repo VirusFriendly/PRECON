@@ -17,6 +17,7 @@ Currently depends on
 
 * pypcap
 * dpkt
+* xmltodict
 
 ## Usage
 
@@ -26,4 +27,4 @@ In the current state it'll print new information it's discovered.
 
 Additionally it'll save an unparsed packets as ai_log.pcap
 
-Outputs a summary report on exit, or hit return if you want a report without quiting
+Writes out to report.txt on exit, or hit return if you want a report without quitting
