@@ -32,7 +32,7 @@ def url_to_protocol(url):
     hostname = url.split('://')[1].split(':')[0].split('/')[0]
 
     if len(url.split(':')) > 2:
-        port = ord(url.explit(':')[2].split('/')[0])
+        port = int(url.split(':')[2].split('/')[0])
 
     if url[:4] == "http":
         proto = "tcp"
@@ -181,9 +181,10 @@ def report_timeline(ip):
             timeline_padding = len(str(day))
 
     time = ' ' + ' ' * timeline_padding + timeline + '\n'
-    usage = ''
 
     for day in date_range:
+        usage = ''
+
         if day in hosts[ip]["Time"].keys():
             time = time + " " + day + ' ' + "-" * (timeline_padding - len(str(day))) + ' '
 
@@ -200,9 +201,9 @@ def report_timeline(ip):
 
                 usage = usage + mark + '  '
 
-        usage = usage + '\n'
+        time = time + usage + '\n'
 
-    return time + usage
+    return time
 
 
 def report():
@@ -313,7 +314,7 @@ def parse_dhcp(ip, data):
                 print "DHCP address length = %d" % length
                 raise WritePcap
         elif option == 60:
-            dhcp_options["Vendor Class Identifier"] = data[offset:data + length]
+            dhcp_options["Vendor Class Identifier"] = data[offset:offset + length]
         elif option == 61:
             if ord(data[offset]) == 0:
                 dhcp_options["Client Identifier"] = dict()
