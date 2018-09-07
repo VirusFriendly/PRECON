@@ -1,11 +1,11 @@
 import dpkt
-from datetime import datetime
-
 import pcap
+import json
 import os
 import select
 import sys
 import xmltodict
+from datetime import datetime
 
 
 def list_to_num(x):
@@ -256,6 +256,12 @@ def parse_bnet(ip, data):
     # fields[7] is Region
     # fields[8] is unknown
     # fields[9] is a rather peculiar value whose MSB changes more than the LSB
+
+
+def parse_dropbox(ip, data):
+    dropbox = json.loads(data)
+    register_extras(ip, "Contains %d dropbox files" % len(dropbox["namespaces"]))
+    register_port(ip, dropbox["port"], "tcp", "Dropbox LAN Sync")
 
 
 def parse_dhcp(ip, data):
@@ -823,6 +829,9 @@ try:
                 raise WritePcap
                 # WonderShare MobileGo.
                 # Used to manage android phone, not really interesting except to retrieve operating system and computer name
+            elif svc_port == 17500:
+                # Dropbox LAN Sync Discovery Protocol
+                parse_dropbox(src_host, pkt[udp_hdr + 8:])
             elif svc_port == 48000:
                 # ???
                 raise WritePcap
