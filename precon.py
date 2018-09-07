@@ -158,7 +158,7 @@ def register_extras(ip, extra):
     register_list(ip, "Extras", extra)
 
 
-def register_user_ageent(ip, user_agent):
+def register_user_agent(ip, user_agent):
     register_list(ip, "User-Agent", user_agent)
 
 
@@ -223,6 +223,7 @@ def report():
 
             findings = findings + report_findings(host, keyword)
 
+        findings = findings + report_findings(host, "Device")
         findings = findings + report_findings(host, "Ports")
         findings = findings + report_findings(host, "Services")
         findings = findings + report_findings(host, "Tags")
@@ -639,7 +640,7 @@ def parse_ssdp(ip, data):
                 register_device(ip, user_agent.split(' ')[2])
                 user_agent = ' '.join(user_agent.split(' ')[:2])
 
-            register_user_ageent(ip, user_agent)
+            register_user_agent(ip, user_agent)
         elif field[0].upper() == "X-SONOS-SESSIONSECONDS":
             pass
         elif field[0].upper()[:2] == "X-":
@@ -739,6 +740,9 @@ ip_hdr = 14
 hosts = dict()  # stores all the recon data. Currently no way to retrieve data
 date_range = list()
 
+if os.path.isfile("data.json"):
+    with open("data.json", 'r') as data_file:
+        hosts = json.loads(data_file.read())
 
 # Setup Artificial Ignorance. Not sure what that is? Google Artificial Ignorance Marcus Ranum
 ignorance_filename = 'ai_log.pcap'
@@ -845,5 +849,8 @@ try:
             # print "!",
             ignorance.writepkt(pkt, ts)
 except KeyboardInterrupt:
+    with open("data.json", 'w') as data_file:
+        data_file.write(json.dumps(hosts))
+
     with open("report.txt", 'w') as report_file:
         report_file.write(report())
