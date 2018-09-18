@@ -4,8 +4,12 @@ import json
 import os
 import select
 import sys
+import traceback
 import xmltodict
 from datetime import datetime
+
+reload(sys)
+sys.setdefaultencoding('utf8')
 
 
 def list_to_num(x):
@@ -50,6 +54,15 @@ def url_to_protocol(url):
 
 
 def register_list(ip, keyword, data):
+    if ip not in hosts.keys():
+        traceback.print_stack()
+        raise WritePcap
+
+    friendlyname = ip
+
+    if "Hostname" in hosts[ip].keys():
+        friendlyname = hosts[ip]["Hostname"][0]
+
     if data is list:
         print "Error %s, %s -> %s" % (ip, keyword, repr(data))
         return
@@ -61,7 +74,7 @@ def register_list(ip, keyword, data):
         hosts[ip][keyword].append(data)
 
         if len(data) > 0:
-            print "Found %s information on %s: %s" % (keyword, ip, data)
+            print "Found %s information on %s: %s" % (keyword, friendlyname, data)
 
 
 def register_dict(ip, keyword, key, value):
@@ -98,13 +111,20 @@ def report_findings(ip, keyword):
             else:
                 findings = findings + hosts[ip][keyword].keys()[0] + ": " + ' '.join(hosts[ip][keyword][hosts[ip][keyword].keys()[0]]) + '\n'
 
-    return findings
+    return findings.encode("utf8")
 
 
 def register_host(ip):
+    newhost = False
+    friendlyname = ip
+
     if ip not in hosts.keys():
         print "Found new host %s" % ip
+        newhost = True
         hosts[ip] = dict()
+
+    if "Hostname" in hosts[ip].keys():
+        friendlyname = hosts[ip]["Hostname"][0]
 
     # insert time here
     now = datetime.now()
@@ -122,6 +142,14 @@ def register_host(ip):
 
     if hour not in hosts[ip]["Time"][day]:
         hosts[ip]["Time"][day].append(hour)
+
+        prevhour = str(int(hour) - 1)
+
+        if len(prevhour) == 1:
+            prevhour = '0' + prevhour
+
+        if not newhost and prevhour not in hosts[ip]["Time"][day]:
+            print "%s is active again" % friendlyname
 
 
 def register_hostname(ip, hostname):
@@ -203,7 +231,7 @@ def report_timeline(ip):
 
         time = time + usage + '\n'
 
-    return time
+    return time.encode()
 
 
 def report():
@@ -353,6 +381,8 @@ def parse_dhcp(ip, data):
             return
 
         register_host(ip)
+
+        register_host(ip)
     elif "Requested IP Address" in dhcp_options.keys() and dhcp_options["Requested IP Address"] != ip:
         register_interface(ip, dhcp_options["Requested IP Address"])
     elif list_to_host(data[12:16]) != "0.0.0.0":
@@ -476,8 +506,12 @@ def parse_mdns(ip, data):
             length = list_to_num(data[offset:offset + 2])
             offset = offset + 2
 
+            if "_sub" in svc_type.split('.'):
+                svc_type = '.'.join(svc_type.split('.')[svc_type.split('.').index("_sub") + 1:])
+
             domain_name, unused = parse_mdns_name(data, offset)
-            register_svc(ip, svc_type, domain_name)
+            # I don't really see any added value in this information
+            # register_svc(ip, svc_type, domain_name)
             offset = offset + length
         elif rtype == 13:  # HINFO RR
             offset = offset + 6
@@ -507,30 +541,102 @@ def parse_mdns(ip, data):
             length = list_to_num(data[offset:offset + 2])
             offset = offset + 2
 
-            for txt in parse_mdns_text(data[offset:offset+length+1], data):
+            friendly_name = ip
+            txt_port = ''
+            txt_protocol = ''
+
+            for txt in parse_mdns_text(data[offset:offset + length + 1], data):
                 if '=' in txt:
-                    if txt.split('=')[1] == '':
-                        pass
-                    elif txt.split('=')[0] == 'osxvers':
-                        register_device(ip, "OSX 10." + txt.split('=')[1])
-                    elif txt.split('=')[0] == 'model':
-                        register_device(ip, '.'.join(txt.split('=')[1].split(',')))
-                    elif txt.split('=')[0] == "md":
-                        register_device(ip, txt.split('=')[1])
-                    elif txt.split('=')[0] == "fn":
-                        register_hostname(ip, txt.split('=')[1])
-                    elif txt.split('=')[0] == "ty":
-                        register_device(ip, txt.split('=')[1])
-                    elif txt.split('=')[0] == "product":
-                        register_device(ip, txt.split('=')[1])
-                    elif txt.split('=')[0] in ["adminurl", "url"]:
-                        hostname, port, protocol = url_to_protocol(txt.split('=')[1])
-                        register_port(ip, port, protocol, '')
-                        register_hostname(ip, hostname)
-                    else:
-                        register_extras(ip, txt)
+                    field, value = txt.split('=')
                 else:
-                    register_extras(ip, txt)
+                    continue
+
+                if value == '':
+                    continue
+
+                if "_googlecast" in svc_type.split('.'):
+                    if field == "fn":
+                        friendly_name = value
+                        register_hostname(ip, value)
+                    elif field == "md":
+                        register_device(ip, value)
+                    elif field == "rs":
+                        print "%s is casting: %s" % (friendly_name, value)
+                    elif field == "st":
+                        if value != '0':
+                            print "%s chromecast ST is: %s" % (friendly_name, value)
+                    elif field in ["id", "ic", "cd", "ve", "ca", "bs", "rm", "nf"]:
+                        pass
+                    else:
+                        register_extras(ip, "%s - %s" % (svc_type, txt))
+                elif "_amzn-wplay" in svc_type.split('.'):
+                    if field in ['a', 'f', "mv", "dpv", 's', 't', 'u', 'v']:
+                        pass
+                    elif field == "sp":
+                        txt_port = value
+                    elif field == "tr":
+                        txt_protocol = value
+                    else:
+                        register_extras(ip, "%s - %s" % (svc_type, txt))
+
+                    if txt_port != '' and txt_protocol != '':
+                        register_port(ip, txt_port, txt_protocol, "amzn-wplay-sp")
+                elif [i for i in ["_printer", "_pdl-datastream", "_ipp", "_ipps"] if i in svc_type.split('.')]:
+                    if field in ["ty", "usb_MDL", "usb_MFG", "product"]:
+                        register_device(ip, value)
+                    elif field in ["pdl", "rp", "URF", "TLS", "UUID", "mac", "Duplex", "Color", "Fax", "Scan",
+                                   "txtvers", "priority", "qtotal", "Transparent", "Binary"]:
+                        pass
+                    elif field == "adminurl":
+                        url_to_protocol(value)
+                    else:
+                        register_extras(ip, "%s - %s" % (svc_type, txt))
+                elif "_companion-link" in svc_type.split('.'):
+                    if field == "rpVr":
+                        register_extras(ip, "Companion Link Version: %s" % value)
+                    elif field == "rpBA":
+                        pass
+                    else:
+                        register_extras(ip, "%s - %s" % (svc_type, txt))
+                elif "_device-info" in svc_type.split('.'):
+                    if "osxvers" == field:
+                        register_device(ip, "OS X version 10.%s" % value)
+                    elif "model" == field:
+                        register_device(ip, '.'.join(value.split(',')))
+                    else:
+                        register_extras(ip, "%s - %s" % (svc_type, txt))
+                elif "_spotify-connect" in svc_type.split('.'):
+                    if "VERSION" == field:
+                        register_extras(ip, "Spotify-Connect Version %s" % value)
+                    elif field in ["CPATH"]:
+                        pass
+                    else:
+                        register_extras(ip, "%s - %s" % (svc_type, txt))
+                elif "_airplay" in svc_type.split('.'):
+                    if "srcvers" == field:
+                        register_extras(ip, "Airplay Version %s" % value)
+                    elif "model" == field:
+                        register_device(ip, value)
+                    elif field in ["deviceid", "features", "fv"]:
+                        pass
+                    else:
+                        register_extras(ip, "%s - %s" % (svc_type, txt))
+                elif "_raop" in svc_type.split('.'):
+                    if "vs" == field:
+                        register_extras(ip, "Airplay Version %s" % value)
+                    elif "am" == field:
+                        register_device(ip, value)
+                    elif field in ["cn", "da", "ft", "fv", "md", "tp", "vn"]:
+                        pass
+                    else:
+                        register_extras(ip, "%s - %s" % (svc_type, txt))
+                elif "_atc" in svc_type.split('.'):
+                    if "libid" == field:
+                        pass
+                    else:
+                        register_extras(ip, "%s - %s" % (svc_type, txt))
+                else:
+                    register_extras(ip, "%s - %s" % (svc_type, txt))
 
             offset = offset + length
         elif rtype == 28:  # AAAA RR
@@ -679,6 +785,7 @@ def parse_teredo(ip, data):
         register_host(tun_client)
 
     register_port(tun_client, tun_client_port, 'udp', '')
+    register_extras(tun_client)
 
     if "endpoints" not in hosts[ip].keys():
         hosts[ip]["endpoints"] = list()
