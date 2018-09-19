@@ -54,6 +54,9 @@ def url_to_protocol(url):
 
 
 def register_list(ip, keyword, data):
+    if ip == '0.0.0.0':
+        return
+
     if ip not in hosts.keys():
         traceback.print_stack()
         raise WritePcap
@@ -78,6 +81,9 @@ def register_list(ip, keyword, data):
 
 
 def register_dict(ip, keyword, key, value):
+    if ip == '0.0.0.0':
+        return
+
     if keyword not in hosts[ip].keys():
         hosts[ip][keyword] = dict()
 
@@ -153,6 +159,9 @@ def register_host(ip):
 
 
 def register_hostname(ip, hostname):
+    if ip == '0.0.0.0':
+        return
+
     if hostname == ip:
         return
 
