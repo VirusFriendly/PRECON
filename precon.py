@@ -313,7 +313,7 @@ def parse_dhcp(ip, data):
                 print "DHCP address length = %d" % length
                 raise WritePcap
         elif option == 60:
-            dhcp_options["Vendor Class Identifier"] = data[offset:data + length]
+            dhcp_options["Vendor Class Identifier"] = data[offset:offset + length]
         elif option == 61:
             if ord(data[offset]) == 0:
                 dhcp_options["Client Identifier"] = dict()
