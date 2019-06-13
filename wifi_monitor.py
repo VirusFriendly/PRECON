@@ -22,25 +22,26 @@ try:
 
                 continue
 
-            if int(network[7]) <= SQUELCH:
-                continue
-
             bssid = ':'.join(network[0:6])
             essid = network[6]
+            pwr = int(network[7])
             channel = network[8]
             security = network[-1]
 
             if len(essid) == 0:
                 essid = "(hidden)"
+            else:
+                essid = '"' + essid + '"'
 
             if len(security) == 0:
                 security = "(open)"
 
             if bssid not in access_points.keys():
-                print(f"{datetime.now()}: Found new Access Point {bssid}/{essid} on channel {channel}")
+                print(f"{datetime.now()}: Found AP {bssid}/{essid} on channel {channel} using {security}")
                 access_points[bssid] = {
                     "ESSID": essid,
                     "SECURITY": security,
+                    "PWR": pwr,
                     "CHANNEL": channel,
                     "LAST SEEN": f"{datetime.now()}"
                 }
@@ -60,6 +61,12 @@ try:
             if access_points[bssid]["CHANNEL"] != channel:
                 print(f"{datetime.now()}: AP {bssid}/{essid} changed from channel {access_points[bssid]['CHANNEL']} to {channel}")
                 access_points[bssid]["CHANNEL"] = channel
+
+            if abs(pwr - access_points[bssid]["PWR"]) > 20:
+                print(
+                f"{datetime.now()}: AP {bssid}/{essid} changed in power from an average of {access_points[bssid]['PWR']} to {pwr}")
+            else:
+                access_points[bssid]["PWR"] = (access_points[bssid]["PWR"]+pwr)/2
 
         time.sleep(50)
 except KeyboardInterrupt:
