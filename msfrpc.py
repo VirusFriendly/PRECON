@@ -10,6 +10,7 @@
 
 import msgpack
 import httplib
+import ssl
 
 class Msfrpc:
   class MsfError(Exception):
@@ -31,9 +32,9 @@ class Msfrpc:
     self.token = False
     self.headers = {"Content-type" : "binary/message-pack" }
     if self.ssl:
-      self.client = httplib.HTTPSConnection(self.host,self.port)
+      self.client = httplib.HTTPSConnection(self.host, self.port, context=ssl.SSLContext(ssl.PROTOCOL_TLS))
     else:
-      self.client = httplib.HTTPConnection(self.host,self.port)
+      self.client = httplib.HTTPConnection(self.host, self.port)
  
   def encode(self,data):
     return msgpack.packb(data)

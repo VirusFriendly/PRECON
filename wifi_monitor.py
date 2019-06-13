@@ -3,11 +3,9 @@ import time
 from datetime import datetime
 
 scan = ["nmcli", "dev", "wifi", "rescan"]
-report = ["nmcli", "-f", "BSSID,SSID,SIGNAL,SECURITY", "dev", "wifi"]
-header = ['BSSID', 'SSID', 'SIGNAL', 'SECURITY']
+report = ["nmcli", "-t", "-e", "no", "-f", "BSSID,SSID,SIGNAL,CHAN,SECURITY", "dev", "wifi"]
 access_points = {}
 SQUELCH = 30
-newline = ''
 
 try:
     while True:
@@ -16,41 +14,56 @@ try:
         lines = subprocess.run(report, stdout=subprocess.PIPE).stdout.decode().split('\n')
 
         for line in lines:
-            network = line.split()
+            network = line.split(':')
 
-            if network == header or len(network) == 0 or int(network[2]) <= SQUELCH:
+            if len(network) < 8:
+                if len(network) > 1:
+                    print(f"error: {network}")
+
                 continue
 
-            security = network[3]
+            if int(network[7]) <= SQUELCH:
+                continue
 
-            if len(network) > 4:
-                security = ' '.join(network[3:])
+            bssid = ':'.join(network[0:6])
+            essid = network[6]
+            channel = network[8]
+            security = network[-1]
 
-            if network[0] not in access_points.keys():
-                print(f"{newline}{datetime.now()}: Found new Access point {line}")
-                newline = ''
-                access_points[network[0]] = {
-                    "ESSID": network[1],
+            if len(essid) == 0:
+                essid = "(hidden)"
+
+            if len(security) == 0:
+                security = "(open)"
+
+            if bssid not in access_points.keys():
+                print(f"{datetime.now()}: Found new Access Point {bssid}/{essid} on channel {channel}")
+                access_points[bssid] = {
+                    "ESSID": essid,
                     "SECURITY": security,
+                    "CHANNEL": channel,
                     "LAST SEEN": f"{datetime.now()}"
                 }
-            elif access_points[network[0]]["ESSID"] != network[1]:
-                print(f"{newline}{datetime.now()}: AP {network[0]} changed its ESSID from {access_points[network[0]]['ESSID']} to network[1]")
-                newline = ''
-                access_points[network[0]]["ESSID"] = network[1]
-            elif access_points[network[0]]["SECURITY"] != security:
-                print(f"{newline}{datetime.now()}: AP {network[0]} changed its SECURITY from {access_points[network[0]]['SECURITY']} to network[2]")
-                newline = ''
-                access_points[network[0]]["SECURITY"] = security
-            else:
-                print('.', end='')
-                newline = '\n'
 
-            access_points[network[0]]["LAST SEEN"] = f"{datetime.now()}"
+                continue
+
+            access_points[bssid]["LAST SEEN"] = f"{datetime.now()}"
+
+            if access_points[bssid]["ESSID"] != essid:
+                print(f"{datetime.now()}: AP {bssid} changed its ESSID from {access_points[bssid]['ESSID']} to {essid}")
+                access_points[bssid]["ESSID"] = essid
+
+            if access_points[bssid]["SECURITY"] != security:
+                print(f"{datetime.now()}: AP {bssid}/{essid} changed its SECURITY from {access_points[bssid]['SECURITY']} to {security}")
+                access_points[bssid]["SECURITY"] = security
+
+            if access_points[bssid]["CHANNEL"] != channel:
+                print(f"{datetime.now()}: AP {bssid}/{essid} changed from channel {access_points[bssid]['CHANNEL']} to {channel}")
+                access_points[bssid]["CHANNEL"] = channel
 
         time.sleep(50)
 except KeyboardInterrupt:
     print()
 
     for ap in access_points.keys():
-        print(f"{ap} {access_points[ap]['ESSID']} {access_points[ap]['SECURITY']} {access_points[ap]['LAST SEEN']}")
+        print(f"{ap} {access_points[ap]['ESSID']} {access_points[ap]['SECURITY']} Channel:{access_points[ap]['CHANNEL']} {access_points[ap]['LAST SEEN']}")
