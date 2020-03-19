@@ -311,7 +311,9 @@ def parse_dhcp(ip, data):
 
     if ip == "0.0.0.0":
         if list_to_host(data[12:16]) != "0.0.0.0":
-            ip = list_to_num(data[12:16])
+            # ip = list_to_num(data[12:16]) Why did I choose list_to_num?
+            ip = list_to_host(data[12:16])
+            register_host(ip)
 
     if list_to_host(data[16:20]) != "0.0.0.0" or list_to_host(data[20:24]) != "0.0.0.0" or list_to_host(data[24:28]) != "0.0.0.0":
         print "Found interesting dhcp"
