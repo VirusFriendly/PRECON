@@ -1,6 +1,5 @@
-# Precon
-
-Passive network reconnaissance relying on Multicast Protocols
+![Precon Logo](https://github.com/VirusFriendly/PRECON/blob/master/assets/precon-logo.png)
+### Passive network reconnaissance relying on Multicast Protocols
 
 ## Current Features
 
