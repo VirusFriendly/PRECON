@@ -1,6 +1,8 @@
 ![Precon Logo](https://github.com/VirusFriendly/PRECON/blob/master/assets/precon-logo.png)
 ### Passive network reconnaissance relying on Multicast Protocols
 
+Updates announced on [@ISeeDeadPackets](https://twitter.com/ISeeDeadPackets)
+
 ## Current Features
 
 Parses out the following information:
@@ -21,12 +23,18 @@ Saves session information as data.json
 ## Planned Features
 
 * Parse more protocols
+* Save data to a sqlite database
 * Integrate these findings findings to Armitage/Metasploit for red team engagements
 * precon_user - Daemon based package that can run as any user
 
 ## Dependancies
 
-Currently depends on
+Package dependencies
+
+* libpcap-dev
+* python-dev
+
+Python dependencies
 
 * pypcap
 * dpkt
