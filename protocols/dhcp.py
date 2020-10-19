@@ -69,7 +69,7 @@ def parse(data):
                 detail_value[context] = dhcp_options[dhcp_option][context]
 
             details[dhcp_options[dhcp_option][detail]].append(detail_value)
-        elif dhcp_option in len4_options.keys():
+        elif dhcp_option in len4_options:
             if length != 4:  #TODO: Support IPv6 somehow
                 print(f"[!] DHCP {len4_options[options]} = {length}")
                 raise WritePcap
