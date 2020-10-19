@@ -1,44 +1,51 @@
-from protocols.utils import list_to_num, WritePcap
+from .utils import list_to_num, WritePcap
+from . import bnet
+from . import dhcp
+from . import dropbox
+from . import llmnr
+from . import mdns
+from . import ssdp
+from . import teredo
+from . import wsd
+
 
 def parse(udp):
     svc_port = list_to_num(udp[2:4])
     data = udp[8:]
-    return dict()
 
-    if svc_port == 67:
+    if svc_port == dhcp.SERVER_PORT:
         # DHCP requests
-        return dhcp(data)
-    elif svc_port == 68:
+        return dhcp.parse(data)
+    elif svc_port == dhcp.CLIENT_PORT:
         # Probably ignore these DHCP replies
-        pass
+        return dict()
     elif svc_port == 1124:
         # boring printer protocol
-        pass
-    elif svc_port == 1228:
-        return bnet(data)
-    elif svc_port == 1900:
-        return ssdp(data)
+        return dict()
+    elif svc_port == bnet.PORT:
+        return bnet.parse(data)
+    elif svc_port == ssdp.PORT:
+        return ssdp.parse(data)
     elif svc_port == 3289:
         # boring printer protocol
-        pass
-    elif svc_port == 3544:
+        return dict()
+    elif svc_port == teredo.PORT:
         # Teredo IPv6 over UDP tunneling
-        return teredo(data)
-    elif svc_port == 3702:
+        return teredo.parse(data)
+    elif svc_port == wsd.PORT:
         # WS-Discovery - Generally looking for WSD enabled (HP) printers
-        return wsd(data)
-    elif svc_port == 5353:
-        return mdns(data)
-    elif svc_port == 5355:
+        return wsd.parse(data)
+    elif svc_port == mdns.PORT:
+        return mdns.parse(data)
+    elif svc_port == llmnr.PORT:
         # Link Local Name Resolution, but unlike mDNS responses are sent unicast
-        return llmnr(data)
+        return llmnr.parse(data)
     elif svc_port == 7765:
         # WonderShare MobileGo.
-        # Used to manage android phone, not really interesting except to retrieve operating system and computer name
         pass
-    elif svc_port == 17500:
+    elif svc_port == dropbox.PORT:
         # Dropbox LAN Sync Discovery Protocol
-        return dropbox(data)
+        return dropbox.parse(data)
     elif svc_port == 48000:
         # ???
         pass
@@ -48,3 +55,4 @@ def parse(udp):
 
     # Artificial Ignorance Catch
     raise WritePcap
+

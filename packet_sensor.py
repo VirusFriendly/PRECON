@@ -11,6 +11,7 @@ def grab_packets(sniffer):
 
     for ts, pkt in sniffer:
         day = int(ts/86400)
+        print(time.ctime(ts))
 
         if day > timestamp:
             timestamp = day
@@ -42,7 +43,7 @@ def grab_packets(sniffer):
 
         svc_port = list_to_num(pkt[udp_hdr + 2: udp_hdr + 4])
 
-        detail = dict()
+        details = dict()
 
         try:
             details = parse(pkt[udp_hdr:])
@@ -55,6 +56,6 @@ def grab_packets(sniffer):
 
             details["Sources"].append({"value": src_host})
 
-        process_details(details)
+        process_details(details, ts)
 
 

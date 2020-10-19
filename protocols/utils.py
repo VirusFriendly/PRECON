@@ -17,7 +17,7 @@ def list_to_host(x):
 def list_to_host6(x):
     assert len(x) == 16
 
-    return ':'.join([''.join([hex(ord(x[i])).split('x')[-1], hex(ord(x[i+1])).split('x')[-1]]) for i in xrange(0, 16, 2)])
+    return ':'.join([''.join([hex(x[i]).split('x')[-1], hex(x[i+1]).split('x')[-1]]) for i in range(0, 16, 2)])
 
 
 def url_to_protocol(url):
