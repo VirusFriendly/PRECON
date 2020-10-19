@@ -15,7 +15,7 @@ PORT = 1228
 
 def parse(data):
     fields = data.split(',')
-    details = dict()
+    details = {"Parser": "Battle Net"}
 
     if len(fields) != 10:
         raise WritePcap

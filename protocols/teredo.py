@@ -3,7 +3,7 @@ from .utils import WritePcap
 PORT = 3544
 
 def parse(data):
-    details = {"Endpoints": list(), "Other Hosts": list()}
+    details = {"Parser": "Teredo", "Endpoints": list(), "Other Hosts": list()}
 
     if 0x70 < ord(data[0]) or ord(data[0]) < 0x60:
         print(f"[*] Teredo is version {ord(data[0])}")

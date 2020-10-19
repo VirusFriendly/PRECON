@@ -48,7 +48,7 @@ def parse_mdns_text(data, pkt):
 
 
 def parse(data):
-    details=dict()
+    details={"Parser": "mDNS"}
 
     if data[2] != 0x84:
         # Not an authortive response

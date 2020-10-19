@@ -4,7 +4,7 @@ SERVER_PORT = 67
 CLIENT_PORT = 68
 
 def parse(data):
-    details = dict()
+    details = {"Parser": "DHCP"}
     option = "option"
     detail = "detail"
     context = "context"

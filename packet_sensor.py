@@ -43,19 +43,23 @@ def grab_packets(sniffer):
 
         svc_port = list_to_num(pkt[udp_hdr + 2: udp_hdr + 4])
 
-        details = dict()
-
         try:
             details = parse(pkt[udp_hdr:])
         except WritePcap:
             ignorance.writepkt(pkt, ts)
+        else:
+          for key in details.keys():
+              if len(details[key]) == 0:
+                  del details[key]
 
-        if src_host != "0.0.0.0":
-            if "Sources" not in details.keys():
-                details["Sources"] = list()
+          details["Timestamp"] = ts
 
-            details["Sources"].append({"value": src_host})
+          if src_host != "0.0.0.0":
+              if "Sources" not in details.keys():
+                  details["Sources"] = list()
 
-        process_details(details, ts)
+              details["Sources"].append({"value": src_host})
+
+          process_details(details)
 
 

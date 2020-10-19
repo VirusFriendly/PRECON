@@ -4,7 +4,7 @@ from .utils import WritePcap
 PORT = 1900
 
 def parse(data):
-    details = {"Devices": list(), "Extras": list(), "Ports": list(), "Softwares": list()}
+    details = {"Parser": "SSDP", "Devices": list(), "Extras": list(), "Ports": list(), "Softwares": list()}
 
     proto = "unk"
     port = None
@@ -52,7 +52,7 @@ def parse(data):
                     raise WritePcap
 
             #TODO: confirm that its an SSDP port that's being advertised
-            details["Ports"].append({"value": port, "protocol": str(proto), "name": "SSDP"})
+            details["Ports"].append({"value": port, "protocol": proto.decode("utf-8"), "name": "SSDP"})
 
         elif field[0].upper() == b"SERVER":
             if field[1][:17] == b"Microsoft-Windows":
@@ -77,24 +77,24 @@ def parse(data):
 
                 details["Devices"].append({"value": win_vers[win_ver]})
 
-            details["Devices"].append({"value": str(field[1])})
+            details["Devices"].append({"value": field[1].decode("utf-8")})
         elif field[0] == b"NT":
             if b"device:" in field[1]:
-                details["Devices"].append({"value": str(field[1].split(b"device:")[1].split(b':')[0])})
+                details["Devices"].append({"value": field[1].split(b"device:")[1].split(b':')[0].decode("utf-8")})
         elif field[0].upper() == b"USER-AGENT":
             user_agent = field[1]
 
             if user_agent[:13] == b"Google Chrome":
-                details["Devices"].append({"value": str(user_agent.split(b' ')[2])})
+                details["Devices"].append({"value": user_agent.split(b' ')[2].decode("utf-8")})
                 user_agent = b' '.join(user_agent.split(b' ')[:2])
 
-            details["Softwares"].append({"value": user_agent})
+            details["Softwares"].append({"value": user_agent.decode("utf-8")})
         elif field[0].upper() == b"X-SONOS-SESSIONSECONDS":
             details["Devices"].append({"value": "Sonos"})
         elif field[0].upper()[:2] == b"X-":
             details["Extras"].append({"value": '='.join(field)})
         elif field[0].upper() == b"CONSOLENAME.XBOX.COM":
-            details["Devices"].append({"value": str(field[1])})
+            details["Devices"].append({"value": field[1].decode("utf-8")})
         elif field[0].upper() == b"DEVICE-GROUP.ROKU.COM":
             details["Extras"].append({"value": f"Roku Group: {field[1:]}"})
         else:

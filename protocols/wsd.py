@@ -82,7 +82,7 @@ def parse(data):
     #     ]
     # )
     doc = xmltodict.parse(data)
-    details = {"Extras": list(), "Ports": list()}
+    details = {"Parser": "WSD", "Extras": list(), "Ports": list()}
 
     if 'soap:Envelope' in doc.keys() and 'soap:Body' in doc['soap:Envelope'].keys():
         if "wsd:Hello" in doc['soap:Envelope']['soap:Body'].keys():
